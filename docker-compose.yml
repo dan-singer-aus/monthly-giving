@@ -4,15 +4,15 @@ services:
     container_name: monthly_giving_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: monthly_giving
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-monthly_giving}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - '5432:5432'
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d monthly_giving']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-monthly_giving}']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -22,15 +22,15 @@ services:
     container_name: monthly_giving_postgres_test
     restart: unless-stopped
     environment:
-      POSTGRES_DB: monthly_giving_test
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-monthly_giving_test}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - '5433:5432'
     volumes:
       - pg_data_test:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d monthly_giving_test']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_TEST_DB:-monthly_giving_test}']
       interval: 5s
       timeout: 3s
       retries: 10

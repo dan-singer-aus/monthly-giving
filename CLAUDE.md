@@ -5,6 +5,7 @@
 A subscription-based alumni giving platform for a school. Alumni contribute monthly based on how many years they have been an alum.
 
 **Core Business Rule:**
+
 ```
 monthly_amount = (current_year - graduation_year) × $1
 ```
@@ -15,21 +16,22 @@ Implementation: Stripe price = $1/month, subscription quantity = years_out. Quan
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js (App Router), shadcn/ui, Tailwind CSS |
-| Backend | Next.js Route Handlers (REST-style) |
-| Database | PostgreSQL 16 via Docker, Drizzle ORM |
-| Auth | Supabase Auth — Email OTP (not magic links) |
-| Billing | Stripe Checkout + Customer Portal + Webhooks |
-| Validation | zod |
-| Testing | vitest |
+| Layer      | Technology                                    |
+| ---------- | --------------------------------------------- |
+| Frontend   | Next.js (App Router), shadcn/ui, Tailwind CSS |
+| Backend    | Next.js Route Handlers (REST-style)           |
+| Database   | PostgreSQL 16 via Docker, Drizzle ORM         |
+| Auth       | Supabase Auth — Email OTP (not magic links)   |
+| Billing    | Stripe Checkout + Customer Portal + Webhooks  |
+| Validation | zod                                           |
+| Testing    | vitest                                        |
 
 ---
 
 ## Architecture
 
 ### Layer Rules (strict separation)
+
 - **Route handlers** (`app/api/`) — HTTP only. No business logic.
 - **Domain** (`src/domain/`) — Pure business logic. No HTTP, no DB.
 - **Services** (`src/services/`) — Stripe/Auth orchestration.
@@ -39,6 +41,7 @@ Implementation: Stripe price = $1/month, subscription quantity = years_out. Quan
 The browser never talks directly to the database.
 
 ### Folder Structure
+
 ```
 app/
   api/
@@ -72,9 +75,11 @@ src/
 > The schema below reflects the initial state of the database. If you notice any discrepancy between this file and `src/db/schema.ts`, do not assume either is correct — flag the difference to the user and ask whether `CLAUDE.md` needs to be updated.
 
 ### Naming Convention
+
 Drizzle ORM automatically maps camelCase TypeScript column names to snake_case SQL column names. For example, `graduationYear` in TypeScript is `graduation_year` in the database. Always use camelCase in code; never write raw snake_case column names manually.
 
 ### Enums
+
 - `user_role`: `user` | `admin`
 - `subscription_status`: `incomplete` | `incomplete_expired` | `trialing` | `active` | `past_due` | `canceled` | `unpaid` | `paused`
 - `processing_status`: `received` | `processed` | `ignored` | `failed`
@@ -83,90 +88,96 @@ Drizzle ORM automatically maps camelCase TypeScript column names to snake_case S
 ### Tables
 
 #### `users`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| email | text | unique, not null |
-| firstName | text | not null |
-| lastName | text | not null |
-| graduationYear | integer | not null, CHECK 1900–2100 |
-| role | user_role | default `user` |
-| createdAt | timestamptz | default now() |
-| updatedAt | timestamptz | default now() |
+
+| Column         | Type        | Notes                     |
+| -------------- | ----------- | ------------------------- |
+| id             | uuid        | PK                        |
+| email          | text        | unique, not null          |
+| firstName      | text        | not null                  |
+| lastName       | text        | not null                  |
+| graduationYear | integer     | not null, CHECK 1900–2100 |
+| role           | user_role   | default `user`            |
+| createdAt      | timestamptz | default now()             |
+| updatedAt      | timestamptz | default now()             |
 
 #### `billingCustomers`
-| Column | Type | Notes |
-|---|---|---|
-| userId | uuid | PK, FK → users.id CASCADE |
-| stripeCustomerId | text | unique, not null |
-| createdAt | timestamptz | default now() |
+
+| Column           | Type        | Notes                     |
+| ---------------- | ----------- | ------------------------- |
+| userId           | uuid        | PK, FK → users.id CASCADE |
+| stripeCustomerId | text        | unique, not null          |
+| createdAt        | timestamptz | default now()             |
 
 #### `billingSubscriptions`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK, FK → users.id CASCADE |
-| stripeSubscriptionId | text | unique, not null |
-| status | subscription_status | default `incomplete` |
-| monthlyAmount | integer | default 1 (in dollars) |
-| currentPeriodEnd | timestamptz | nullable |
-| cancelAtPeriodEnd | boolean | default false |
-| createdAt | timestamptz | default now() |
-| updatedAt | timestamptz | default now() |
+
+| Column               | Type                | Notes                     |
+| -------------------- | ------------------- | ------------------------- |
+| id                   | uuid                | PK, FK → users.id CASCADE |
+| stripeSubscriptionId | text                | unique, not null          |
+| status               | subscription_status | default `incomplete`      |
+| monthlyAmount        | integer             | default 1 (in dollars)    |
+| currentPeriodEnd     | timestamptz         | nullable                  |
+| cancelAtPeriodEnd    | boolean             | default false             |
+| createdAt            | timestamptz         | default now()             |
+| updatedAt            | timestamptz         | default now()             |
 
 #### `stripeEvents`
-| Column | Type | Notes |
-|---|---|---|
-| stripeEventId | text | PK |
-| eventType | text | not null |
-| receivedAt | timestamptz | default now() |
-| processedAt | timestamptz | nullable |
-| processingStatus | processing_status | default `received` |
-| errorMessage | text | nullable |
-| relatedCustomerId | text | nullable |
-| relatedSubscriptionId | text | nullable |
-| payload | jsonb | full Stripe event payload |
+
+| Column                | Type              | Notes                     |
+| --------------------- | ----------------- | ------------------------- |
+| stripeEventId         | text              | PK                        |
+| eventType             | text              | not null                  |
+| receivedAt            | timestamptz       | default now()             |
+| processedAt           | timestamptz       | nullable                  |
+| processingStatus      | processing_status | default `received`        |
+| errorMessage          | text              | nullable                  |
+| relatedCustomerId     | text              | nullable                  |
+| relatedSubscriptionId | text              | nullable                  |
+| payload               | jsonb             | full Stripe event payload |
 
 #### `billingSyncLog`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK, gen_random_uuid() |
-| userId | uuid | FK → users.id SET NULL |
-| stripeSubscriptionId | text | nullable |
-| stripeEventId | text | FK → stripeEvents.stripeEventId SET NULL |
-| computedYearsOut | integer | not null, CHECK >= 1 |
-| expectedQuantity | integer | not null, CHECK >= 1 |
-| previousQuantity | integer | nullable |
-| actionTaken | sync_action | not null |
-| createdAt | timestamptz | default now() |
+
+| Column               | Type        | Notes                                    |
+| -------------------- | ----------- | ---------------------------------------- |
+| id                   | uuid        | PK, gen_random_uuid()                    |
+| userId               | uuid        | FK → users.id SET NULL                   |
+| stripeSubscriptionId | text        | nullable                                 |
+| stripeEventId        | text        | FK → stripeEvents.stripeEventId SET NULL |
+| computedYearsOut     | integer     | not null, CHECK >= 1                     |
+| expectedQuantity     | integer     | not null, CHECK >= 1                     |
+| previousQuantity     | integer     | nullable                                 |
+| actionTaken          | sync_action | not null                                 |
+| createdAt            | timestamptz | default now()                            |
 
 #### `alumniInvites`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK, gen_random_uuid() |
-| email | text | unique, not null |
-| graduationYear | integer | not null, CHECK 1900–2100 |
-| inviteCode | text | unique, not null |
-| expiresAt | timestamptz | nullable |
-| usedAt | timestamptz | nullable |
-| createdAt | timestamptz | default now() |
+
+| Column         | Type        | Notes                     |
+| -------------- | ----------- | ------------------------- |
+| id             | uuid        | PK, gen_random_uuid()     |
+| email          | text        | unique, not null          |
+| graduationYear | integer     | not null, CHECK 1900–2100 |
+| inviteCode     | text        | unique, not null          |
+| expiresAt      | timestamptz | nullable                  |
+| usedAt         | timestamptz | nullable                  |
+| createdAt      | timestamptz | default now()             |
 
 ---
 
 ## API Endpoints (Spec)
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | /api/health | none | Health check |
-| GET | /api/public/metrics | none | Public giving stats |
-| GET | /api/me | user | Get own profile |
-| PATCH | /api/me | user | Update profile |
-| POST | /api/billing/checkout-session | user | Create Stripe Checkout session |
-| POST | /api/billing/portal-session | user | Create Stripe Customer Portal session |
-| GET | /api/subscription | user | Get subscription status |
-| GET | /api/receipts | user | List receipts (optional) |
-| POST | /api/webhooks/stripe | Stripe sig | Handle Stripe events |
-| GET | /api/admin/metrics | admin | Admin dashboard stats |
-| GET | /api/admin/export | admin | Export data |
+| Method | Path                          | Auth       | Purpose                               |
+| ------ | ----------------------------- | ---------- | ------------------------------------- |
+| GET    | /api/health                   | none       | Health check                          |
+| GET    | /api/public/metrics           | none       | Public giving stats                   |
+| GET    | /api/me                       | user       | Get own profile                       |
+| PATCH  | /api/me                       | user       | Update profile                        |
+| POST   | /api/billing/checkout-session | user       | Create Stripe Checkout session        |
+| POST   | /api/billing/portal-session   | user       | Create Stripe Customer Portal session |
+| GET    | /api/subscription             | user       | Get subscription status               |
+| GET    | /api/receipts                 | user       | List receipts (optional)              |
+| POST   | /api/webhooks/stripe          | Stripe sig | Handle Stripe events                  |
+| GET    | /api/admin/metrics            | admin      | Admin dashboard stats                 |
+| GET    | /api/admin/export             | admin      | Export data                           |
 
 ---
 
@@ -186,11 +197,11 @@ Webhook handling is idempotent — check `stripeEvents` before processing.
 
 ## Environments
 
-| Environment | Database | Stripe |
-|---|---|---|
-| Dev | Docker Postgres (localhost:5432) | test mode |
-| Staging | Supabase project (test) | test mode |
-| Production | Supabase project (live) | live mode |
+| Environment | Database                         | Stripe    |
+| ----------- | -------------------------------- | --------- |
+| Dev         | Docker Postgres (localhost:5432) | test mode |
+| Staging     | Supabase project (test)          | test mode |
+| Production  | Supabase project (live)          | live mode |
 
 ---
 
@@ -251,6 +262,7 @@ This proxies real Stripe events to your local server and prints the webhook sign
 ## Development Rules for Claude
 
 ### Modifying This File
+
 Never edit `CLAUDE.md` autonomously. Always show the proposed change and get explicit confirmation from the developer before modifying this file, regardless of permission mode or how you were invoked.
 
 ### After Every Code Change
@@ -263,6 +275,7 @@ Never edit `CLAUDE.md` autonomously. Always show the proposed change and get exp
 6. **CLAUDE.md** — If a change affects the schema, architecture, scripts, or established patterns documented here, propose an update to `CLAUDE.md` and wait for confirmation before applying it.
 
 ### Code Style
+
 - **Verbose naming** — prefer `error` over `e`, `subscription` over `sub`, `user` over `u`. Exception: established conventions like `i` in loops.
 - **Clarity over cleverness** — write code that is easy to read and reason about, not code that is impressively terse.
 - **Avoid duplication** — extract shared logic rather than copying it. Three similar lines may be fine; a fourth means it needs a name.
@@ -271,15 +284,18 @@ Never edit `CLAUDE.md` autonomously. Always show the proposed change and get exp
 - **Explicit error handling** — never silently swallow errors in `catch` blocks. Always log, propagate, or handle them intentionally.
 
 ### Import Paths
+
 Prefer `@/` for cross-directory imports — `@/*` maps to the project root (configured in `tsconfig.json`). For example, use `@/src/repos/user` rather than `../../../src/repos/user`. Same-directory relative imports (e.g., `./schema`) are fine.
 
 ### Layer Separation (Mandatory)
+
 - Route handlers contain only HTTP parsing and response — no business logic
 - Business logic lives in `src/domain/` only
 - All DB queries go through `src/repos/` — never call `db` directly from route handlers or domain
 - Services in `src/services/` orchestrate between domain and external APIs (Stripe, Supabase)
 
 ### Database Queries
+
 Write sargable WHERE clauses — conditions that allow Postgres to use indexes. Avoid applying functions or casts to indexed columns on the left-hand side of a condition.
 
 ```ts
@@ -291,6 +307,7 @@ Write sargable WHERE clauses — conditions that allow Postgres to use indexes. 
 ```
 
 ### External Documentation
+
 Stripe, Drizzle ORM, Next.js App Router, and Supabase Auth all evolve rapidly. When implementing anything non-trivial with these libraries, fetch the current official docs rather than relying on training data. Prefer official docs over blog posts or Stack Overflow.
 
 ---

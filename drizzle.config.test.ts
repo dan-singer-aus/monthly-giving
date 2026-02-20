@@ -1,4 +1,4 @@
-// drizzle.config.ts
+// drizzle.config.test.ts — points drizzle-kit at the test database
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { defineConfig } from "drizzle-kit";
@@ -15,14 +15,9 @@ export default defineConfig({
   dialect: "postgresql",
   schema: "./src/db/schema.ts",
   out: "./src/db/migrations",
-
-  // Drizzle Kit uses this to run migrations / introspect.
-  // Keep it separate from runtime envs if you want, but this is fine.
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    url: process.env.DATABASE_URL_TEST!,
   },
-
-  // Optional:
   strict: true,
   verbose: true,
 });

@@ -250,11 +250,17 @@ This proxies real Stripe events to your local server and prints the webhook sign
 
 ## Development Rules for Claude
 
+### Modifying This File
+Never edit `CLAUDE.md` autonomously. Always show the proposed change and get explicit confirmation from the developer before modifying this file, regardless of permission mode or how you were invoked.
+
 ### After Every Code Change
 
 1. **Lint** — Run `npm run lint` and fix all errors before considering work done.
 2. **Format** — Run `npm run format` to apply Prettier.
 3. **Tests** — Run `npx vitest run` if test files exist. Note: vitest is installed but tests are not yet set up. When writing tests, use the test DB (`DATABASE_URL_TEST`), never the dev DB.
+4. **Tests for new features** — New features should have corresponding tests. If the test infrastructure isn't set up yet, note what should be tested so it can be added later.
+5. **README** — Update `README.md` if the change affects setup, configuration, environment variables, or developer workflow. Do not update it for every feature.
+6. **CLAUDE.md** — If a change affects the schema, architecture, scripts, or established patterns documented here, propose an update to `CLAUDE.md` and wait for confirmation before applying it.
 
 ### Code Style
 - **Verbose naming** — prefer `error` over `e`, `subscription` over `sub`, `user` over `u`. Exception: established conventions like `i` in loops.
@@ -286,13 +292,6 @@ Write sargable WHERE clauses — conditions that allow Postgres to use indexes. 
 
 ### External Documentation
 Stripe, Drizzle ORM, Next.js App Router, and Supabase Auth all evolve rapidly. When implementing anything non-trivial with these libraries, fetch the current official docs rather than relying on training data. Prefer official docs over blog posts or Stack Overflow.
-
-### Test Database
-- Test DB runs on port **5433** — uses `DATABASE_URL_TEST` env var
-- Start both DBs with `npm run db:up`
-- Migrate test DB: `npm run drizzle:migrate:test`
-- Full reset: `npm run db:reset:test`
-- Adminer at `localhost:8080` can browse both databases
 
 ---
 

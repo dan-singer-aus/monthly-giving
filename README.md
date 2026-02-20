@@ -1,41 +1,53 @@
 # Monthly Giving
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Development](#development)
+- [Before running tests](#before-running-tests)
+- [Scripts](#scripts)
+  - [App](#app)
+  - [Code quality](#code-quality)
+  - [Database — Docker](#database--docker)
+  - [Database — Drizzle](#database--drizzle)
+  - [Database — Resets](#database--resets)
+- [Environment Variables](#environment-variables)
+- [Schema & Migrations](#schema--migrations)
+
+---
+
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 20+
 - [Docker](https://www.docker.com/) + Docker Compose
 
-## Installation
+## Setup
 
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Set up environment variables
+# 2. Set up environment variables (defaults match Docker Compose — no edits needed to run locally)
 cp .env.example .env.local
-```
 
-Edit `.env.local` and fill in any required values (see [Environment Variables](#environment-variables)).
-
-## Database
-
-Start both Postgres databases (dev + test) with Docker:
-
-```bash
+# 3. Start both Postgres containers (dev on :5432, test on :5433) + Adminer UI on :8080
 npm run db:up
-```
 
-This starts:
-- **PostgreSQL (dev)** on `localhost:5432` — used by the app
-- **PostgreSQL (test)** on `localhost:5433` — isolated DB for test runs
-- **Adminer** (DB UI) on [http://localhost:8080](http://localhost:8080)
+# 4. Confirm both databases are reachable
+npm run db:health
 
-Run migrations:
-
-```bash
+# 5. Apply migrations
 npm run drizzle:migrate         # dev DB
 npm run drizzle:migrate:test    # test DB
+
+# 6. Start the dev server
+npm run dev
 ```
+
+Open [http://localhost:3000](http://localhost:3000). Adminer (DB browser) is at [http://localhost:8080](http://localhost:8080).
+
+Edit `.env.local` if you need to point at an external database or add API keys (see [Environment Variables](#environment-variables)).
 
 ## Development
 
@@ -43,7 +55,21 @@ npm run drizzle:migrate:test    # test DB
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+On subsequent days, if the containers aren't running, start them first:
+
+```bash
+npm run db:up && npm run dev
+```
+
+## Before running tests
+
+Reset the test database to a guaranteed clean state before each test suite:
+
+```bash
+npm run db:reset:test
+```
+
+This destroys and recreates the test container and re-applies all migrations. The dev database is completely unaffected.
 
 ## Scripts
 

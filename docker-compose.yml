@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: monthly_giving_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: monthly_giving
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d monthly_giving']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    # Quick DB UI at http://localhost:8080
+  adminer:
+    image: adminer:4
+    container_name: monthly_giving_adminer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8080:8080'
+
+volumes:
+  pg_data:

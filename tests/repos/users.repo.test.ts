@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '@/src/db/schema';
 import { users } from '@/src/db/schema';
-import { UsersRepo, type CreateUserInput } from './users.repo';
+import { UsersRepo, type CreateUserInput } from '@/src/repos/users.repo';
 
 if (!process.env.DATABASE_URL_TEST) {
   throw new Error('DATABASE_URL_TEST is not set — run tests with the test DB');

@@ -9,5 +9,3 @@ export const timestamps = {
     .notNull()
     .default(sql`now()`),
 };
-
-

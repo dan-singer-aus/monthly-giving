@@ -91,16 +91,12 @@
         "alumni_invites_email_unique": {
           "name": "alumni_invites_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         },
         "alumni_invites_invite_code_unique": {
           "name": "alumni_invites_invite_code_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "invite_code"
-          ]
+          "columns": ["invite_code"]
         }
       },
       "policies": {},
@@ -158,12 +154,8 @@
           "name": "billing_customers_user_id_users_id_fk",
           "tableFrom": "billing_customers",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -173,9 +165,7 @@
         "billing_customers_stripe_customer_id_unique": {
           "name": "billing_customers_stripe_customer_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_customer_id"
-          ]
+          "columns": ["stripe_customer_id"]
         }
       },
       "policies": {},
@@ -278,12 +268,8 @@
           "name": "billing_subscriptions_id_users_id_fk",
           "tableFrom": "billing_subscriptions",
           "tableTo": "users",
-          "columnsFrom": [
-            "id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -293,9 +279,7 @@
         "billing_subscriptions_stripe_subscription_id_unique": {
           "name": "billing_subscriptions_stripe_subscription_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_subscription_id"
-          ]
+          "columns": ["stripe_subscription_id"]
         }
       },
       "policies": {},
@@ -413,12 +397,8 @@
           "name": "billing_sync_log_user_id_users_id_fk",
           "tableFrom": "billing_sync_log",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -426,12 +406,8 @@
           "name": "billing_sync_log_stripe_event_id_stripe_events_stripe_event_id_fk",
           "tableFrom": "billing_sync_log",
           "tableTo": "stripe_events",
-          "columnsFrom": [
-            "stripe_event_id"
-          ],
-          "columnsTo": [
-            "stripe_event_id"
-          ],
+          "columnsFrom": ["stripe_event_id"],
+          "columnsTo": ["stripe_event_id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -668,9 +644,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -687,12 +661,7 @@
     "public.processing_status": {
       "name": "processing_status",
       "schema": "public",
-      "values": [
-        "received",
-        "processed",
-        "ignored",
-        "failed"
-      ]
+      "values": ["received", "processed", "ignored", "failed"]
     },
     "public.subscription_status": {
       "name": "subscription_status",
@@ -722,10 +691,7 @@
     "public.user_role": {
       "name": "user_role",
       "schema": "public",
-      "values": [
-        "user",
-        "admin"
-      ]
+      "values": ["user", "admin"]
     }
   },
   "schemas": {},

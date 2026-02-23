@@ -14,6 +14,7 @@
   - [Database — Resets](#database--resets)
 - [Environment Variables](#environment-variables)
 - [Schema & Migrations](#schema--migrations)
+- [API Reference](#api-reference)
 
 ---
 
@@ -136,3 +137,7 @@ npm run drizzle:generate        # creates the migration file
 npm run drizzle:migrate         # applies it to dev
 npm run drizzle:migrate:test    # applies it to test
 ```
+
+## API Reference
+
+See [api-spec.md](api-spec.md) for the full list of implemented endpoints, including auth requirements and request/response shapes.

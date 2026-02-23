@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { users, userRoleEnum } from '@/src/db/schema';
+import { db } from '@/src/db';
 
-export type DbClient = PostgresJsDatabase<Record<string, never>>;
+export type DbClient = typeof db;
 
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
@@ -132,3 +132,5 @@ export class UsersRepo {
     return row ?? null;
   }
 }
+
+export const usersRepo = new UsersRepo(db);

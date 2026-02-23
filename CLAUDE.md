@@ -64,6 +64,8 @@ src/
     columns.helpers.ts
   lib/                # shared utilities
   validators/         # zod schemas
+tests/
+  repos/              # repo-layer integration tests (use DATABASE_URL_TEST)
 ```
 
 ---
@@ -269,7 +271,7 @@ Never edit `CLAUDE.md` autonomously. Always show the proposed change and get exp
 
 1. **Lint** — Run `npm run lint` and fix all errors before considering work done.
 2. **Format** — Run `npm run format` to apply Prettier.
-3. **Tests** — Run `npx vitest run` if test files exist. Note: vitest is installed but tests are not yet set up. When writing tests, use the test DB (`DATABASE_URL_TEST`), never the dev DB.
+3. **Tests** — Run `npx vitest run`. When writing tests, use the test DB (`DATABASE_URL_TEST`), never the dev DB.
 4. **Tests for new features** — New features should have corresponding tests. If the test infrastructure isn't set up yet, note what should be tested so it can be added later.
 5. **README** — Update `README.md` if the change affects setup, configuration, environment variables, or developer workflow. Do not update it for every feature.
 6. **CLAUDE.md** — If a change affects the schema, architecture, scripts, or established patterns documented here, propose an update to `CLAUDE.md` and wait for confirmation before applying it.

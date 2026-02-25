@@ -14,6 +14,7 @@
   - [Database — Resets](#database--resets)
 - [Environment Variables](#environment-variables)
 - [Schema & Migrations](#schema--migrations)
+- [API Reference](#api-reference)
 
 ---
 
@@ -116,12 +117,13 @@ This destroys and recreates the test container and re-applies all migrations. Th
 
 ## Environment Variables
 
-| Variable                             | Description                                        |
-| ------------------------------------ | -------------------------------------------------- |
-| `DATABASE_URL`                       | PostgreSQL connection string for the dev database  |
-| `DATABASE_URL_TEST`                  | PostgreSQL connection string for the test database |
-| `STRIPE_SECRET_KEY`                  | Stripe secret key (server-side only)               |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (exposed to the browser)    |
+| Variable                             | Description                                             |
+| ------------------------------------ | ------------------------------------------------------- |
+| `DATABASE_URL`                       | PostgreSQL connection string for the dev database       |
+| `DATABASE_URL_TEST`                  | PostgreSQL connection string for the test database      |
+| `STRIPE_SECRET_KEY`                  | Stripe secret key (server-side only)                    |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (exposed to the browser)         |
+| `STRIPE_PRICE_ID`                    | Stripe price ID for the $1/month recurring subscription |
 
 `.env.local` is gitignored and should never be committed.
 
@@ -136,3 +138,7 @@ npm run drizzle:generate        # creates the migration file
 npm run drizzle:migrate         # applies it to dev
 npm run drizzle:migrate:test    # applies it to test
 ```
+
+## API Reference
+
+See [api-spec.md](api-spec.md) for the full list of implemented endpoints, including auth requirements and request/response shapes.

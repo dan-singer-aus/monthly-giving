@@ -14,6 +14,12 @@ Implementation: Stripe price = $1/month, subscription quantity = years_out. Quan
 
 ---
 
+## Developer Notes (`devNotes/`)
+
+If a `devNotes/` folder exists locally, it contains developer-facing documentation mapped to files in `src/` and `app/api/`. Treat it as a helpful orientation aid only — it may be outdated. Always read the actual source files when reasoning about the codebase.
+
+---
+
 ## Tech Stack
 
 | Layer      | Technology                                    |
@@ -275,6 +281,7 @@ Never edit `CLAUDE.md` autonomously. Always show the proposed change and get exp
 4. **Tests for new features** — New features should have corresponding tests. If the test infrastructure isn't set up yet, note what should be tested so it can be added later.
 5. **README** — Update `README.md` if the change affects setup, configuration, environment variables, or developer workflow. Do not update it for every feature.
 6. **CLAUDE.md** — If a change affects the schema, architecture, scripts, or established patterns documented here, propose an update to `CLAUDE.md` and wait for confirmation before applying it.
+7. **API spec** — If you add, change, or remove any route under `app/api/`, update `api-spec.md` to reflect the change. This includes: HTTP method, path, auth level, request shape, and response shape.
 
 ### Code Style
 

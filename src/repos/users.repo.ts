@@ -3,7 +3,6 @@ import { users, userRoleEnum } from '@/src/db/schema';
 import { db } from '@/src/db';
 
 export type DbClient = typeof db;
-
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
 export type CreateUserInput = {

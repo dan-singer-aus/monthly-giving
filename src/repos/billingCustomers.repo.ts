@@ -1,8 +1,7 @@
 import { eq } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { billingCustomers } from '@/src/db/schema';
-
-export type DbClient = PostgresJsDatabase<Record<string, never>>;
+import { db } from '@/src/db';
+export type DbClient = typeof db;
 
 export type CreateBillingCustomerInput = {
   userId: string;
@@ -54,3 +53,5 @@ export class BillingCustomersRepo {
     return row ?? null;
   }
 }
+
+export const billingCustomersRepo = new BillingCustomersRepo(db);

@@ -14,6 +14,12 @@ Implementation: Stripe price = $1/month, subscription quantity = years_out. Quan
 
 ---
 
+## Developer Notes (`devNotes/`)
+
+If a `devNotes/` folder exists locally, it contains developer-facing documentation mapped to files in `src/` and `app/api/`. Treat it as a helpful orientation aid only — it may be outdated. Always read the actual source files when reasoning about the codebase.
+
+---
+
 ## Tech Stack
 
 | Layer      | Technology                                    |

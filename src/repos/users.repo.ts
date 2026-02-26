@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { users, userRoleEnum } from '@/src/db/schema';
 import { db } from '@/src/db';
 
@@ -129,6 +129,15 @@ export class UsersRepo {
       .where(eq(users.id, id))
       .returning();
     return row ?? null;
+  }
+
+  /**
+   * Returns the total number of registered users.
+   * Used for public and admin metrics.
+   */
+  async countAll() {
+    const [row] = await this.db.select({ total: count() }).from(users);
+    return row?.total ?? 0;
   }
 }
 

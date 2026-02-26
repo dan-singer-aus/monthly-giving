@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { count, eq, sum } from 'drizzle-orm';
 import { billingSubscriptions, subscriptionStatusEnum } from '@/src/db/schema';
 import { db } from '@/src/db';
 
@@ -87,6 +87,49 @@ export class BillingSubscriptionsRepo {
       .returning();
 
     return row ?? null;
+  }
+
+  /**
+   * Returns the count of active subscriptions and their total monthly revenue
+   * in a single query. Used for public and admin metrics.
+   */
+  async getActiveMetrics() {
+    const [row] = await this.db
+      .select({
+        activeCount: count(),
+        totalMonthlyRevenue: sum(billingSubscriptions.monthlyAmount),
+      })
+      .from(billingSubscriptions)
+      .where(eq(billingSubscriptions.status, 'active'));
+
+    return {
+      activeCount: row?.activeCount ?? 0,
+      totalMonthlyRevenue: Number(row?.totalMonthlyRevenue ?? 0),
+    };
+  }
+
+  /**
+   * Returns subscription counts grouped by status.
+   * Used for the admin metrics breakdown.
+   */
+  async listCountsByStatus() {
+    return this.db
+      .select({
+        status: billingSubscriptions.status,
+        count: count(),
+      })
+      .from(billingSubscriptions)
+      .groupBy(billingSubscriptions.status);
+  }
+
+  /**
+   * Returns all subscription rows. Used for the admin data export.
+   */
+  async listAll() {
+    return this.db
+      .select()
+      .from(billingSubscriptions)
+      .orderBy(billingSubscriptions.createdAt);
   }
 }
 

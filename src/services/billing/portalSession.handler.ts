@@ -1,9 +1,6 @@
-import { z } from 'zod';
 import { portalSessionSchema } from '@/src/validators/billing';
-
-type Auth = {
-  getSessionUserId: (req: Request) => Promise<string | null>;
-};
+import { type Auth, requireUser } from '@/src/lib/auth';
+import { validateBody } from '@/src/lib/validation';
 
 type BillingCustomer = {
   userId: string;
@@ -31,23 +28,13 @@ export function makePortalSessionHandler(props: {
   stripe: StripeClient;
 }) {
   return async function POST(req: Request): Promise<Response> {
-    const userId = await props.auth.getSessionUserId(req);
-    if (!userId) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await requireUser(req, props.auth);
+    if (!authResult.success) return authResult.response;
+    const { userId } = authResult;
 
-    const body: unknown = await req.json();
-    const parseResult = portalSessionSchema.safeParse(body);
-    if (!parseResult.success) {
-      return Response.json(
-        {
-          error: 'Invalid request body',
-          details: z.flattenError(parseResult.error),
-        },
-        { status: 400 }
-      );
-    }
-    const { returnUrl } = parseResult.data;
+    const validationResult = await validateBody(req, portalSessionSchema);
+    if (!validationResult.success) return validationResult.response;
+    const { returnUrl } = validationResult.data;
 
     const billingCustomer =
       await props.billingCustomersRepo.getByUserId(userId);

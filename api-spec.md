@@ -141,3 +141,227 @@ subscription (update payment method, cancel, view invoices, etc.).
 | 401    | `{ "error": "Unauthorized" }`                 | No valid session                                   |
 | 404    | `{ "error": "No billing customer found..." }` | User has no subscription yet                       |
 | 500    | `{ "error": "Internal server error" }`        | Stripe error                                       |
+
+---
+
+### `PATCH /api/me`
+
+Updates the authenticated user's profile. Only the fields provided are updated (patch semantics). Unknown fields are rejected.
+
+**Auth:** User session (Supabase)
+
+**Request body** (all fields optional, at least one expected):
+
+```json
+{
+  "firstName": "string (min length 1)",
+  "lastName": "string (min length 1)",
+  "graduationYear": "integer (1900–2100)"
+}
+```
+
+**Responses:**
+
+| Status | Body                                     | When                     |
+| ------ | ---------------------------------------- | ------------------------ |
+| 200    | `{ "user": { ... } }`                    | Profile updated          |
+| 400    | `{ "error": "...", "details": { ... } }` | Invalid or unknown field |
+| 401    | `{ "error": "Unauthorized" }`            | No valid session         |
+| 404    | `{ "error": "User not found" }`          | Session user not in DB   |
+
+**Response shape:**
+
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "string",
+    "firstName": "string",
+    "lastName": "string",
+    "graduationYear": 2010,
+    "role": "user" | "admin"
+  }
+}
+```
+
+---
+
+### `GET /api/subscription`
+
+Returns the authenticated user's subscription status.
+
+**Auth:** User session (Supabase)
+
+**Request:** No body or parameters.
+
+**Responses:**
+
+| Status | Body                                              | When                            |
+| ------ | ------------------------------------------------- | ------------------------------- |
+| 200    | `{ "subscribed": false }`                         | User has no subscription        |
+| 200    | `{ "subscribed": true, "subscription": { ... } }` | User has a subscription on file |
+| 401    | `{ "error": "Unauthorized" }`                     | No valid session                |
+
+**Subscribed response shape:**
+
+```json
+{
+  "subscribed": true,
+  "subscription": {
+    "stripeSubscriptionId": "string",
+    "status": "active" | "canceled" | "past_due" | ...,
+    "monthlyAmount": 16,
+    "currentPeriodEnd": "ISO 8601 timestamp or null",
+    "cancelAtPeriodEnd": false
+  }
+}
+```
+
+---
+
+### `GET /api/receipts`
+
+Returns the authenticated user's list of paid Stripe invoices.
+
+**Auth:** User session (Supabase)
+
+**Request:** No body or parameters.
+
+**Responses:**
+
+| Status | Body                          | When                                               |
+| ------ | ----------------------------- | -------------------------------------------------- |
+| 200    | `{ "receipts": [ ... ] }`     | Success — array is empty if no paid invoices exist |
+| 401    | `{ "error": "Unauthorized" }` | No valid session                                   |
+
+**Receipt object shape:**
+
+```json
+{
+  "id": "in_xxx",
+  "amountPaid": 1600,
+  "createdAt": "ISO 8601 timestamp",
+  "invoiceUrl": "string or null",
+  "periodStart": "ISO 8601 timestamp",
+  "periodEnd": "ISO 8601 timestamp"
+}
+```
+
+> `amountPaid` is in cents. A value of `1600` means $16.00.
+
+---
+
+### `GET /api/public/metrics`
+
+Returns public giving statistics. No authentication required.
+
+**Auth:** None
+
+**Request:** No body or parameters.
+
+**Responses:**
+
+| Status | Body                  | When   |
+| ------ | --------------------- | ------ |
+| 200    | `{ ... metrics ... }` | Always |
+
+**Response shape:**
+
+```json
+{
+  "totalUsers": 120,
+  "activeSubscribers": 95,
+  "totalMonthlyRevenue": 1520
+}
+```
+
+> `totalMonthlyRevenue` is in dollars (sum of each active subscriber's `monthlyAmount`).
+
+---
+
+### `GET /api/admin/metrics`
+
+Returns detailed platform metrics for admins. Requires admin role.
+
+**Auth:** User session (Supabase) — admin role required
+
+**Request:** No body or parameters.
+
+**Responses:**
+
+| Status | Body                          | When                           |
+| ------ | ----------------------------- | ------------------------------ |
+| 200    | `{ ... metrics ... }`         | Admin user                     |
+| 401    | `{ "error": "Unauthorized" }` | No valid session               |
+| 403    | `{ "error": "Forbidden" }`    | Authenticated but not an admin |
+
+**Response shape:**
+
+```json
+{
+  "totalUsers": 120,
+  "subscriptions": {
+    "active": 95,
+    "totalMonthlyRevenue": 1520,
+    "byStatus": [
+      { "status": "active", "count": 95 },
+      { "status": "canceled", "count": 18 }
+    ]
+  },
+  "stripeEvents": {
+    "byProcessingStatus": [
+      { "processingStatus": "processed", "count": 340 },
+      { "processingStatus": "ignored", "count": 12 },
+      { "processingStatus": "failed", "count": 1 }
+    ]
+  }
+}
+```
+
+---
+
+### `GET /api/admin/export`
+
+Returns a full data export of users and subscriptions. Requires admin role.
+
+**Auth:** User session (Supabase) — admin role required
+
+**Request:** No body or parameters.
+
+**Responses:**
+
+| Status | Body                                         | When                           |
+| ------ | -------------------------------------------- | ------------------------------ |
+| 200    | `{ "users": [...], "subscriptions": [...] }` | Admin user                     |
+| 401    | `{ "error": "Unauthorized" }`                | No valid session               |
+| 403    | `{ "error": "Forbidden" }`                   | Authenticated but not an admin |
+
+**User object shape:**
+
+```json
+{
+  "id": "uuid",
+  "email": "string",
+  "firstName": "string",
+  "lastName": "string",
+  "graduationYear": 2010,
+  "role": "user" | "admin",
+  "createdAt": "ISO 8601 timestamp"
+}
+```
+
+**Subscription object shape:**
+
+```json
+{
+  "userId": "uuid",
+  "stripeSubscriptionId": "string",
+  "status": "active" | "canceled" | ...,
+  "monthlyAmount": 16,
+  "currentPeriodEnd": "ISO 8601 timestamp or null",
+  "cancelAtPeriodEnd": false,
+  "createdAt": "ISO 8601 timestamp"
+}
+```
+
+> Not all users have a subscription. Correlate by matching `subscription.userId` to `user.id`.

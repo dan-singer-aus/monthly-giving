@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { stripeEvents, processingStatusEnum } from '@/src/db/schema';
 
@@ -73,6 +73,20 @@ export class StripeEventsRepo {
       .returning();
 
     return row ?? null;
+  }
+
+  /**
+   * Returns event counts grouped by processing status.
+   * Used for the admin metrics webhook health summary.
+   */
+  async listCountsByProcessingStatus() {
+    return this.db
+      .select({
+        processingStatus: stripeEvents.processingStatus,
+        count: count(),
+      })
+      .from(stripeEvents)
+      .groupBy(stripeEvents.processingStatus);
   }
 }
 export const stripeEventsRepo = new StripeEventsRepo(db);

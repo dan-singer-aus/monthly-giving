@@ -1,8 +1,9 @@
 import { desc, eq } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type * as schema from '@/src/db/schema';
 import { billingSyncLog, syncActionEnum } from '@/src/db/schema';
 
-export type DbClient = PostgresJsDatabase<Record<string, never>>;
+export type DbClient = NodePgDatabase<typeof schema>;
 
 export type CreateBillingSyncLogInput = {
   userId?: string | null;

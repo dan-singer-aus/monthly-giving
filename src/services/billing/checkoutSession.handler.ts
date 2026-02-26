@@ -1,12 +1,9 @@
 import { checkoutSessionSchema } from '@/src/validators/billing';
 import { computeYearsOut } from '@/src/domain/billing';
-import { z } from 'zod';
+import { type Auth, requireUser } from '@/src/lib/auth';
+import { validateBody } from '@/src/lib/validation';
 
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID;
-
-type Auth = {
-  getSessionUserId: (req: Request) => Promise<string | null>;
-};
 
 type User = {
   id: string;
@@ -61,23 +58,13 @@ export function makeCheckoutSessionHandler(props: {
   stripe: StripeClient;
 }) {
   return async function POST(req: Request) {
-    const userId = await props.auth.getSessionUserId(req);
-    if (!userId) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await requireUser(req, props.auth);
+    if (!authResult.success) return authResult.response;
+    const { userId } = authResult;
 
-    const body: unknown = await req.json();
-    const parseResult = checkoutSessionSchema.safeParse(body);
-    if (!parseResult.success) {
-      return Response.json(
-        {
-          error: 'Invalid request body',
-          details: z.flattenError(parseResult.error),
-        },
-        { status: 400 }
-      );
-    }
-    const { successUrl, cancelUrl } = parseResult.data;
+    const validationResult = await validateBody(req, checkoutSessionSchema);
+    if (!validationResult.success) return validationResult.response;
+    const { successUrl, cancelUrl } = validationResult.data;
 
     const user = await props.usersRepo.getById(userId);
     if (!user) {

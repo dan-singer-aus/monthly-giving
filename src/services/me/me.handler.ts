@@ -1,3 +1,5 @@
+import { type Auth } from '@/src/lib/auth';
+
 type Role = 'user' | 'admin';
 
 type User = {
@@ -7,10 +9,6 @@ type User = {
   email: string;
   role: Role;
   graduationYear: number;
-};
-
-type Auth = {
-  getSessionUserId: (req: Request) => Promise<string | null>;
 };
 
 type UsersRepo = {

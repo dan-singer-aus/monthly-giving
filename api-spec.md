@@ -86,6 +86,37 @@ If the user does not yet have a Stripe customer record, one is created automatic
 
 ---
 
+### `POST /api/webhooks/stripe`
+
+Receives Stripe webhook events. Verifies the request signature, records the event for idempotency, and processes subscription lifecycle changes.
+
+**Auth:** Stripe webhook signature — verified via the `stripe-signature` header using `STRIPE_WEBHOOK_SECRET`.
+
+**Request body:** Raw Stripe event payload (JSON). Must be read as raw bytes for signature verification — do not pre-parse.
+
+**Responses:**
+
+| Status | Body                   | When                                         |
+| ------ | ---------------------- | -------------------------------------------- |
+| 200    | `{ "received": true }` | Event received and processed (or ignored)    |
+| 400    | `{ "error": "..." }`   | Missing or invalid `stripe-signature` header |
+| 500    | `{ "error": "..." }`   | `STRIPE_WEBHOOK_SECRET` env var not set      |
+
+> After signature verification, the handler **always returns 200** — even on processing errors. This prevents Stripe from retrying events that failed due to internal issues. Processing failures are recorded in `stripeEvents` with `processingStatus: 'failed'`.
+
+**Handled events:**
+
+| Event type                      | Action                                                                       |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `customer.subscription.created` | Creates a `billingSubscriptions` record linking the user to the subscription |
+| `customer.subscription.updated` | Updates `status`, `currentPeriodEnd`, and `cancelAtPeriodEnd`                |
+| `customer.subscription.deleted` | Updates `status` to `canceled`                                               |
+| All others                      | Recorded in `stripeEvents` with `processingStatus: 'ignored'`                |
+
+**Idempotency:** Every event is checked against the `stripeEvents` table by `stripeEventId` before processing. If the event has already been `processed` or `ignored`, the handler returns 200 immediately without re-processing.
+
+---
+
 ### `POST /api/billing/portal-session`
 
 Creates a Stripe Customer Portal session so the authenticated user can manage their

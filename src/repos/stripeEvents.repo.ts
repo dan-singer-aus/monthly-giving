@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { db } from '@/src/db';
 import { stripeEvents, processingStatusEnum } from '@/src/db/schema';
 
-export type DbClient = PostgresJsDatabase<Record<string, never>>;
+export type DbClient = typeof db;
 
 export type CreateStripeEventInput = {
   stripeEventId: string;
@@ -75,3 +75,4 @@ export class StripeEventsRepo {
     return row ?? null;
   }
 }
+export const stripeEventsRepo = new StripeEventsRepo(db);

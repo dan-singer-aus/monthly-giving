@@ -7,10 +7,9 @@ const testSubscription = {
   id: 'sub_test_123',
   customer: 'cus_test_456',
   status: 'active' as const,
-  current_period_end: 1740000000,
   cancel_at_period_end: false,
   items: {
-    data: [{ quantity: 5 }],
+    data: [{ quantity: 5, current_period_end: 1740000000 }],
   },
 };
 
@@ -156,7 +155,7 @@ describe('POST /api/webhooks/stripe', () => {
             constructEvent: () =>
               buildStripeEvent('customer.subscription.created', {
                 ...testSubscription,
-                items: { data: [{ quantity: 7 }] },
+                items: { data: [{ quantity: 7, current_period_end: 1740000000 }] },
               }),
           },
         },
@@ -190,7 +189,7 @@ describe('POST /api/webhooks/stripe', () => {
       ).toBe(7);
     });
 
-    it('defaults monthlyAmount to 1 when items.data is empty', async () => {
+    it('does not create a subscription when items.data is empty', async () => {
       let capturedCreateInput: unknown = null;
       const handler = makeStripeWebhookHandler({
         stripe: {
@@ -226,10 +225,9 @@ describe('POST /api/webhooks/stripe', () => {
         },
       });
 
-      await handler(makeRequest('{}'));
-      expect(
-        (capturedCreateInput as { monthlyAmount: number }).monthlyAmount
-      ).toBe(1);
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(capturedCreateInput).toBeNull();
     });
   });
 

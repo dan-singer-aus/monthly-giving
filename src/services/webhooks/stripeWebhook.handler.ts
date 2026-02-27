@@ -12,14 +12,18 @@ type SubscriptionStatus =
   | 'unpaid'
   | 'paused';
 
+type StripeSubscriptionItem = {
+  quantity?: number;
+  current_period_end: number;
+};
+
 type StripeSubscription = {
   id: string;
   customer: string;
   status: SubscriptionStatus;
-  current_period_end: number;
   cancel_at_period_end: boolean;
   items: {
-    data: Array<{ quantity?: number }>;
+    data: Array<StripeSubscriptionItem>;
   };
 };
 
@@ -106,14 +110,18 @@ function extractSubscriptionData(
     typeof record.id !== 'string' ||
     typeof record.customer !== 'string' ||
     typeof record.status !== 'string' ||
-    typeof record.current_period_end !== 'number' ||
     typeof record.cancel_at_period_end !== 'boolean'
   ) {
     return null;
   }
 
   const items = record.items as { data?: unknown } | undefined;
-  if (!Array.isArray(items?.data)) {
+  if (!Array.isArray(items?.data) || items.data.length === 0) {
+    return null;
+  }
+
+  const firstItem = items.data[0] as Record<string, unknown>;
+  if (typeof firstItem.current_period_end !== 'number') {
     return null;
   }
 
@@ -142,7 +150,7 @@ export function makeStripeWebhookHandler(props: {
       return;
     }
 
-    const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+    const currentPeriodEnd = new Date(subscription.items.data[0].current_period_end * 1000);
     const monthlyAmount = subscription.items.data[0]?.quantity ?? 1;
 
     await props.billingSubscriptionsRepo.create({
@@ -171,7 +179,7 @@ export function makeStripeWebhookHandler(props: {
       return;
     }
 
-    const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+    const currentPeriodEnd = new Date(subscription.items.data[0].current_period_end * 1000);
 
     await props.billingSubscriptionsRepo.updateById(existingSubscription.id, {
       status: subscription.status,

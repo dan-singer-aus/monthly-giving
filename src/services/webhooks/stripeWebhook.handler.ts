@@ -1,6 +1,13 @@
+import { computeYearsOut } from '@/src/domain/billing';
+
 const SUBSCRIPTION_CREATED_EVENT = 'customer.subscription.created';
 const SUBSCRIPTION_UPDATED_EVENT = 'customer.subscription.updated';
 const SUBSCRIPTION_DELETED_EVENT = 'customer.subscription.deleted';
+const INVOICE_UPCOMING_EVENT = 'invoice.upcoming';
+
+// ============================================================
+// Types
+// ============================================================
 
 type SubscriptionStatus =
   | 'incomplete'
@@ -15,6 +22,11 @@ type SubscriptionStatus =
 type StripeSubscriptionItem = {
   quantity?: number;
   current_period_end: number;
+};
+
+type StripeInvoice = {
+  subscription: string | null;
+  customer: string;
 };
 
 type StripeSubscription = {
@@ -42,6 +54,19 @@ type StripeClient = {
       signature: string,
       secret: string
     ) => StripeEvent;
+  };
+
+  subscriptions: {
+    retrieve: (id: string) => Promise<{
+      items: { data: Array<{ id: string; quantity?: number }> };
+    }>;
+    update: (
+      id: string,
+      params: {
+        items: Array<{ id: string; quantity: number }>;
+        proration_behavior: 'none';
+      }
+    ) => Promise<unknown>;
   };
 };
 
@@ -73,6 +98,29 @@ type BillingCustomersRepo = {
   ) => Promise<{ userId: string; stripeCustomerId: string } | null>;
 };
 
+type UsersRepo = {
+  getById: (
+    id: string
+  ) => Promise<{ id: string; graduationYear: number } | null>;
+};
+
+type BillingSyncLogRepo = {
+  create: (input: {
+    userId?: string | null;
+    stripeSubscriptionId?: string | null;
+    stripeEventId?: string | null;
+    computedYearsOut: number;
+    expectedQuantity: number;
+    previousQuantity?: number | null;
+    actionTaken:
+      | 'no_change'
+      | 'updated_quantity'
+      | 'missing_mapping'
+      | 'skipped_not_active'
+      | 'error';
+  }) => Promise<unknown>;
+};
+
 type BillingSubscriptionsRepo = {
   create: (input: {
     id: string;
@@ -82,9 +130,11 @@ type BillingSubscriptionsRepo = {
     currentPeriodEnd?: Date | null;
     cancelAtPeriodEnd?: boolean;
   }) => Promise<{ id: string; stripeSubscriptionId: string } | null>;
-  getByStripeSubscriptionId: (
-    stripeSubscriptionId: string
-  ) => Promise<{ id: string; stripeSubscriptionId: string } | null>;
+  getByStripeSubscriptionId: (stripeSubscriptionId: string) => Promise<{
+    id: string;
+    stripeSubscriptionId: string;
+    status: SubscriptionStatus;
+  } | null>;
   updateById: (
     id: string,
     patch: {
@@ -94,6 +144,19 @@ type BillingSubscriptionsRepo = {
     }
   ) => Promise<{ id: string; stripeSubscriptionId: string } | null>;
 };
+
+type WebhookHandlerProps = {
+  stripe: StripeClient;
+  stripeEventsRepo: StripeEventsRepo;
+  billingSubscriptionsRepo: BillingSubscriptionsRepo;
+  billingCustomersRepo: BillingCustomersRepo;
+  usersRepo: UsersRepo;
+  billingSyncLogRepo: BillingSyncLogRepo;
+};
+
+// ============================================================
+// Event data extractors
+// ============================================================
 
 function extractSubscriptionData(
   event: StripeEvent
@@ -128,12 +191,28 @@ function extractSubscriptionData(
   return record as unknown as StripeSubscription;
 }
 
-export function makeStripeWebhookHandler(props: {
-  stripe: StripeClient;
-  stripeEventsRepo: StripeEventsRepo;
-  billingSubscriptionsRepo: BillingSubscriptionsRepo;
-  billingCustomersRepo: BillingCustomersRepo;
-}) {
+function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
+  const { object } = event.data;
+  if (typeof object !== 'object' || object === null) return null;
+  const record = object as Record<string, unknown>;
+  if (
+    typeof record.customer !== 'string' ||
+    !('subscription' in record) ||
+    (record.subscription !== null && typeof record.subscription !== 'string')
+  ) {
+    return null;
+  }
+  return {
+    subscription: record.subscription as string | null,
+    customer: record.customer,
+  };
+}
+
+// ============================================================
+// Handler factory
+// ============================================================
+
+export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
   async function handleSubscriptionCreated(
     event: StripeEvent,
     subscription: StripeSubscription
@@ -150,7 +229,9 @@ export function makeStripeWebhookHandler(props: {
       return;
     }
 
-    const currentPeriodEnd = new Date(subscription.items.data[0].current_period_end * 1000);
+    const currentPeriodEnd = new Date(
+      subscription.items.data[0].current_period_end * 1000
+    );
     const monthlyAmount = subscription.items.data[0]?.quantity ?? 1;
 
     await props.billingSubscriptionsRepo.create({
@@ -179,12 +260,100 @@ export function makeStripeWebhookHandler(props: {
       return;
     }
 
-    const currentPeriodEnd = new Date(subscription.items.data[0].current_period_end * 1000);
+    const currentPeriodEnd = new Date(
+      subscription.items.data[0].current_period_end * 1000
+    );
 
     await props.billingSubscriptionsRepo.updateById(existingSubscription.id, {
       status: subscription.status,
       currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    });
+  }
+
+  async function handleInvoiceUpcoming(
+    event: StripeEvent,
+    invoice: { subscription: string; customer: string }
+  ): Promise<void> {
+    const localSub =
+      await props.billingSubscriptionsRepo.getByStripeSubscriptionId(
+        invoice.subscription
+      );
+    if (!localSub) {
+      await props.billingSyncLogRepo.create({
+        stripeSubscriptionId: invoice.subscription,
+        stripeEventId: event.id,
+        computedYearsOut: 1,
+        expectedQuantity: 1,
+        actionTaken: 'missing_mapping',
+      });
+      return;
+    }
+
+    const user = await props.usersRepo.getById(localSub.id);
+    if (!user) {
+      await props.billingSyncLogRepo.create({
+        userId: localSub.id,
+        stripeSubscriptionId: invoice.subscription,
+        stripeEventId: event.id,
+        computedYearsOut: 1,
+        expectedQuantity: 1,
+        actionTaken: 'missing_mapping',
+      });
+      return;
+    }
+
+    if (localSub.status !== 'active') {
+      const yearsOut = computeYearsOut(
+        user.graduationYear,
+        new Date().getFullYear()
+      );
+      await props.billingSyncLogRepo.create({
+        userId: user.id,
+        stripeSubscriptionId: invoice.subscription,
+        stripeEventId: event.id,
+        computedYearsOut: yearsOut,
+        expectedQuantity: yearsOut,
+        actionTaken: 'skipped_not_active',
+      });
+      return;
+    }
+
+    const yearsOut = computeYearsOut(
+      user.graduationYear,
+      new Date().getFullYear()
+    );
+    const stripeSubscription = await props.stripe.subscriptions.retrieve(
+      invoice.subscription
+    );
+    const previousQuantity = stripeSubscription.items.data[0]?.quantity ?? 1;
+
+    if (previousQuantity === yearsOut) {
+      await props.billingSyncLogRepo.create({
+        userId: user.id,
+        stripeSubscriptionId: invoice.subscription,
+        stripeEventId: event.id,
+        computedYearsOut: yearsOut,
+        expectedQuantity: yearsOut,
+        previousQuantity,
+        actionTaken: 'no_change',
+      });
+      return;
+    }
+
+    await props.stripe.subscriptions.update(invoice.subscription, {
+      items: [{ id: stripeSubscription.items.data[0].id, quantity: yearsOut }],
+      proration_behavior: 'none',
+    });
+
+    await props.billingSyncLogRepo.create({
+      userId: user.id,
+      stripeSubscriptionId: invoice.subscription,
+      stripeEventId: event.id,
+      computedYearsOut: yearsOut,
+      expectedQuantity: yearsOut,
+      previousQuantity,
+      actionTaken: 'updated_quantity',
     });
   }
 
@@ -232,13 +401,15 @@ export function makeStripeWebhookHandler(props: {
       }
 
       const subscription = extractSubscriptionData(event);
+      const invoice = extractInvoiceData(event);
 
       await props.stripeEventsRepo.create({
         stripeEventId: event.id,
         eventType: event.type,
         processingStatus: 'received',
-        relatedCustomerId: subscription?.customer ?? null,
-        relatedSubscriptionId: subscription?.id ?? null,
+        relatedCustomerId: subscription?.customer ?? invoice?.customer ?? null,
+        relatedSubscriptionId:
+          subscription?.id ?? invoice?.subscription ?? null,
         payload: event,
       });
 
@@ -259,6 +430,23 @@ export function makeStripeWebhookHandler(props: {
         } else {
           console.warn(
             `${event.type} event ${event.id} has no valid subscription object`
+          );
+        }
+      } else if (event.type === INVOICE_UPCOMING_EVENT) {
+        if (!invoice) {
+          console.warn(
+            `${event.type} event ${event.id} has no valid invoice object`
+          );
+        } else if (!invoice.subscription) {
+          await props.stripeEventsRepo.updateById(event.id, {
+            processingStatus: 'ignored',
+            processedAt: new Date(),
+          });
+          return Response.json({ received: true }, { status: 200 });
+        } else {
+          await handleInvoiceUpcoming(
+            event,
+            invoice as { subscription: string; customer: string }
           );
         }
       } else {

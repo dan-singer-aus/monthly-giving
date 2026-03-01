@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '@/src/db/schema';
 import { billingSyncLog, syncActionEnum } from '@/src/db/schema';
+import { db } from '@/src/db';
 
 export type DbClient = NodePgDatabase<typeof schema>;
 
@@ -51,3 +52,5 @@ export class BillingSyncLogRepo {
       .orderBy(desc(billingSyncLog.createdAt));
   }
 }
+
+export const billingSyncLogRepo = new BillingSyncLogRepo(db);

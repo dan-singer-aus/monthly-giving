@@ -106,12 +106,13 @@ Receives Stripe webhook events. Verifies the request signature, records the even
 
 **Handled events:**
 
-| Event type                      | Action                                                                       |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `customer.subscription.created` | Creates a `billingSubscriptions` record linking the user to the subscription |
-| `customer.subscription.updated` | Updates `status`, `currentPeriodEnd`, and `cancelAtPeriodEnd`                |
-| `customer.subscription.deleted` | Updates `status` to `canceled`                                               |
-| All others                      | Recorded in `stripeEvents` with `processingStatus: 'ignored'`                |
+| Event type                      | Action                                                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `customer.subscription.created` | Creates a `billingSubscriptions` record linking the user to the subscription                                |
+| `customer.subscription.updated` | Updates `status`, `currentPeriodEnd`, and `cancelAtPeriodEnd`                                               |
+| `customer.subscription.deleted` | Updates `status` to `canceled`                                                                              |
+| `invoice.upcoming`              | Recalculates `yearsOut` and updates the Stripe subscription quantity if changed; writes to `billingSyncLog` |
+| All others                      | Recorded in `stripeEvents` with `processingStatus: 'ignored'`                                               |
 
 **Idempotency:** Every event is checked against the `stripeEvents` table by `stripeEventId` before processing. If the event has already been `processed` or `ignored`, the handler returns 200 immediately without re-processing.
 

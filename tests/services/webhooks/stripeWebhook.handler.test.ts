@@ -21,6 +21,18 @@ const testBillingCustomer = {
 const testBillingSubscription = {
   id: 'user-123',
   stripeSubscriptionId: 'sub_test_123',
+  status: 'active' as const,
+};
+
+const testUser = { id: 'user-123', graduationYear: 2010 };
+
+const testInvoice = {
+  subscription: 'sub_test_123',
+  customer: 'cus_test_456',
+};
+
+const testRetrievedSubscription = {
+  items: { data: [{ id: 'si_test_123', quantity: 14 }] },
 };
 
 function buildStripeEvent(type: string, object: unknown = testSubscription) {
@@ -48,6 +60,9 @@ function makeHandler({
   existingStripeEvent = null,
   billingCustomer = testBillingCustomer,
   billingSubscription = testBillingSubscription,
+  user = testUser,
+  retrievedSubscription = testRetrievedSubscription,
+  subscriptionsUpdateShouldThrow = false,
 }: {
   constructedEvent?: ReturnType<typeof buildStripeEvent>;
   constructEventShouldThrow?: boolean;
@@ -57,6 +72,9 @@ function makeHandler({
   } | null;
   billingCustomer?: typeof testBillingCustomer | null;
   billingSubscription?: typeof testBillingSubscription | null;
+  user?: typeof testUser | null;
+  retrievedSubscription?: typeof testRetrievedSubscription;
+  subscriptionsUpdateShouldThrow?: boolean;
 } = {}) {
   return makeStripeWebhookHandler({
     stripe: {
@@ -64,6 +82,13 @@ function makeHandler({
         constructEvent: () => {
           if (constructEventShouldThrow) throw new Error('Invalid signature');
           return constructedEvent;
+        },
+      },
+      subscriptions: {
+        retrieve: async () => retrievedSubscription,
+        update: async () => {
+          if (subscriptionsUpdateShouldThrow)
+            throw new Error('Stripe update failed');
         },
       },
     },
@@ -85,6 +110,12 @@ function makeHandler({
       create: async () => testBillingSubscription,
       getByStripeSubscriptionId: async () => billingSubscription,
       updateById: async () => testBillingSubscription,
+    },
+    usersRepo: {
+      getById: async () => user,
+    },
+    billingSyncLogRepo: {
+      create: async () => null,
     },
   });
 }
@@ -155,8 +186,14 @@ describe('POST /api/webhooks/stripe', () => {
             constructEvent: () =>
               buildStripeEvent('customer.subscription.created', {
                 ...testSubscription,
-                items: { data: [{ quantity: 7, current_period_end: 1740000000 }] },
+                items: {
+                  data: [{ quantity: 7, current_period_end: 1740000000 }],
+                },
               }),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
           },
         },
         stripeEventsRepo: {
@@ -181,6 +218,8 @@ describe('POST /api/webhooks/stripe', () => {
           getByStripeSubscriptionId: async () => testBillingSubscription,
           updateById: async () => testBillingSubscription,
         },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
       });
 
       await handler(makeRequest('{}'));
@@ -200,6 +239,10 @@ describe('POST /api/webhooks/stripe', () => {
                 items: { data: [] },
               }),
           },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
         },
         stripeEventsRepo: {
           getById: async () => null,
@@ -223,6 +266,8 @@ describe('POST /api/webhooks/stripe', () => {
           getByStripeSubscriptionId: async () => testBillingSubscription,
           updateById: async () => testBillingSubscription,
         },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
       });
 
       const response = await handler(makeRequest('{}'));
@@ -291,6 +336,10 @@ describe('POST /api/webhooks/stripe', () => {
             constructEvent: () =>
               buildStripeEvent('customer.subscription.created'),
           },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
         },
         stripeEventsRepo: {
           getById: async () => null,
@@ -313,6 +362,329 @@ describe('POST /api/webhooks/stripe', () => {
           getByStripeSubscriptionId: async () => testBillingSubscription,
           updateById: async () => testBillingSubscription,
         },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('invoice.upcoming', () => {
+    it('updates quantity when yearsOut has increased', async () => {
+      let capturedUpdateId: string | null = null;
+      let capturedUpdateParams: unknown = null;
+      let capturedSyncLog: unknown = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.upcoming', testInvoice),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async (id, params) => {
+              capturedUpdateId = id;
+              capturedUpdateParams = params;
+            },
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'processed' as const,
+          }),
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: {
+          create: async (input) => {
+            capturedSyncLog = input;
+            return null;
+          },
+        },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(capturedUpdateId).toBe('sub_test_123');
+      expect(
+        (capturedUpdateParams as { items: Array<{ quantity: number }> })
+          .items[0].quantity
+      ).toBe(16);
+      expect((capturedSyncLog as { actionTaken: string }).actionTaken).toBe(
+        'updated_quantity'
+      );
+    });
+
+    it('does not update quantity when yearsOut is unchanged', async () => {
+      let updateCalled = false;
+      let capturedSyncLog: unknown = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.upcoming', testInvoice),
+          },
+          subscriptions: {
+            retrieve: async () => ({
+              items: { data: [{ id: 'si_test_123', quantity: 16 }] },
+            }),
+            update: async () => {
+              updateCalled = true;
+            },
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'processed' as const,
+          }),
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: {
+          create: async (input) => {
+            capturedSyncLog = input;
+            return null;
+          },
+        },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(updateCalled).toBe(false);
+      expect((capturedSyncLog as { actionTaken: string }).actionTaken).toBe(
+        'no_change'
+      );
+    });
+
+    it('marks event as ignored when invoice.subscription is null', async () => {
+      let capturedUpdateStatus: string | null = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.upcoming', {
+                ...testInvoice,
+                subscription: null,
+              }),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async (_id, patch) => {
+            capturedUpdateStatus = patch.processingStatus ?? null;
+            return {
+              stripeEventId: 'evt_test',
+              processingStatus: patch.processingStatus ?? 'received',
+            };
+          },
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(capturedUpdateStatus).toBe('ignored');
+    });
+
+    it('logs missing_mapping when local subscription is not found', async () => {
+      let capturedSyncLog: unknown = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.upcoming', testInvoice),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'processed' as const,
+          }),
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => null,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: {
+          create: async (input) => {
+            capturedSyncLog = input;
+            return null;
+          },
+        },
+      });
+
+      await handler(makeRequest('{}'));
+      expect((capturedSyncLog as { actionTaken: string }).actionTaken).toBe(
+        'missing_mapping'
+      );
+    });
+
+    it('logs missing_mapping when user is not found', async () => {
+      let capturedSyncLog: unknown = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.upcoming', testInvoice),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'processed' as const,
+          }),
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => null },
+        billingSyncLogRepo: {
+          create: async (input) => {
+            capturedSyncLog = input;
+            return null;
+          },
+        },
+      });
+
+      await handler(makeRequest('{}'));
+      expect((capturedSyncLog as { actionTaken: string }).actionTaken).toBe(
+        'missing_mapping'
+      );
+    });
+
+    it('logs skipped_not_active when subscription is not active', async () => {
+      let capturedSyncLog: unknown = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.upcoming', testInvoice),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'processed' as const,
+          }),
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => ({
+            ...testBillingSubscription,
+            status: 'past_due' as const,
+          }),
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: {
+          create: async (input) => {
+            capturedSyncLog = input;
+            return null;
+          },
+        },
+      });
+
+      await handler(makeRequest('{}'));
+      expect((capturedSyncLog as { actionTaken: string }).actionTaken).toBe(
+        'skipped_not_active'
+      );
+    });
+
+    it('returns 200 and marks event as failed when Stripe update throws', async () => {
+      const handler = makeHandler({
+        constructedEvent: buildStripeEvent('invoice.upcoming', testInvoice),
+        subscriptionsUpdateShouldThrow: true,
       });
 
       const response = await handler(makeRequest('{}'));

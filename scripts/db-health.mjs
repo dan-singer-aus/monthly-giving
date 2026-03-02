@@ -29,7 +29,9 @@ for (const { label, url } of targets) {
   } catch (err) {
     console.error(`  [${label}] FAIL — ${err.message}`);
     allOk = false;
-    try { await client.end(); } catch {}
+    try {
+      await client.end();
+    } catch {}
   }
 }
 

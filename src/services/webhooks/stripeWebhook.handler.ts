@@ -195,15 +195,28 @@ function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
   const { object } = event.data;
   if (typeof object !== 'object' || object === null) return null;
   const record = object as Record<string, unknown>;
+
+  if (typeof record.customer !== 'string') return null;
+
+  // Stripe API 2025-09-30.clover+: subscription ID lives at
+  // parent.subscription_details.subscription (not top-level)
+  if (typeof record.parent !== 'object' || record.parent === null) return null;
+  const parent = record.parent as Record<string, unknown>;
+
   if (
-    typeof record.customer !== 'string' ||
-    !('subscription' in record) ||
-    (record.subscription !== null && typeof record.subscription !== 'string')
+    parent.type !== 'subscription_details' ||
+    typeof parent.subscription_details !== 'object' ||
+    parent.subscription_details === null
   ) {
     return null;
   }
+
+  const details = parent.subscription_details as Record<string, unknown>;
+  const subscriptionId =
+    typeof details.subscription === 'string' ? details.subscription : null;
+
   return {
-    subscription: record.subscription as string | null,
+    subscription: subscriptionId,
     customer: record.customer,
   };
 }

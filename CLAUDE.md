@@ -197,7 +197,7 @@ Drizzle ORM automatically maps camelCase TypeScript column names to snake_case S
 4. API calculates new quantity (years_out), updates Stripe subscription (no proration)
 5. Stripe generates invoice and charges the correct amount
 
-Webhook events handled: `invoice.upcoming`, `invoice.created`
+Webhook events handled: `invoice.upcoming`
 
 Webhook handling is idempotent — check `stripeEvents` before processing.
 

@@ -27,8 +27,13 @@ const testBillingSubscription = {
 const testUser = { id: 'user-123', graduationYear: 2010 };
 
 const testInvoice = {
-  subscription: 'sub_test_123',
   customer: 'cus_test_456',
+  parent: {
+    type: 'subscription_details',
+    subscription_details: {
+      subscription: 'sub_test_123',
+    },
+  },
 };
 
 const testRetrievedSubscription = {
@@ -494,8 +499,11 @@ describe('POST /api/webhooks/stripe', () => {
           webhooks: {
             constructEvent: () =>
               buildStripeEvent('invoice.upcoming', {
-                ...testInvoice,
-                subscription: null,
+                customer: 'cus_test_456',
+                parent: {
+                  type: 'subscription_details',
+                  subscription_details: { subscription: null },
+                },
               }),
           },
           subscriptions: {

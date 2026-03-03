@@ -4,6 +4,7 @@ const SUBSCRIPTION_CREATED_EVENT = 'customer.subscription.created';
 const SUBSCRIPTION_UPDATED_EVENT = 'customer.subscription.updated';
 const SUBSCRIPTION_DELETED_EVENT = 'customer.subscription.deleted';
 const INVOICE_UPCOMING_EVENT = 'invoice.upcoming';
+const INVOICE_CREATED_EVENT = 'invoice.created';
 
 // ============================================================
 // Types
@@ -24,9 +25,16 @@ type StripeSubscriptionItem = {
   current_period_end: number;
 };
 
+type StripeInvoiceLine = {
+  quantity: number | null;
+};
+
 type StripeInvoice = {
   subscription: string | null;
   customer: string;
+  lines: {
+    data: StripeInvoiceLine[];
+  };
 };
 
 type StripeSubscription = {
@@ -141,6 +149,7 @@ type BillingSubscriptionsRepo = {
       status?: SubscriptionStatus;
       currentPeriodEnd?: Date | null;
       cancelAtPeriodEnd?: boolean;
+      monthlyAmount?: number;
     }
   ) => Promise<{ id: string; stripeSubscriptionId: string } | null>;
 };
@@ -218,6 +227,13 @@ function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
   return {
     subscription: subscriptionId,
     customer: record.customer,
+    lines: {
+      data: Array.isArray(
+        (record.lines as { data?: unknown } | undefined)?.data
+      )
+        ? (record.lines as { data: Array<StripeInvoiceLine> }).data
+        : [],
+    },
   };
 }
 
@@ -370,6 +386,32 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
     });
   }
 
+  async function handleInvoiceCreated(
+    event: StripeEvent,
+    invoice: StripeInvoice
+  ): Promise<void> {
+    if (!invoice.subscription) {
+      return;
+    }
+
+    const localSub =
+      await props.billingSubscriptionsRepo.getByStripeSubscriptionId(
+        invoice.subscription
+      );
+
+    if (!localSub) {
+      return;
+    }
+
+    const firstLine = invoice.lines.data[0];
+    if (!firstLine || firstLine.quantity === null) {
+      return;
+    }
+    await props.billingSubscriptionsRepo.updateById(localSub.id, {
+      monthlyAmount: firstLine.quantity,
+    });
+  }
+
   return async function POST(req: Request): Promise<Response> {
     const rawBody = await req.text();
     const signature = req.headers.get('stripe-signature');
@@ -461,6 +503,20 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
             event,
             invoice as { subscription: string; customer: string }
           );
+        }
+      } else if (event.type === INVOICE_CREATED_EVENT) {
+        if (!invoice) {
+          console.warn(
+            `${event.type} event ${event.id} has no valid invoice object`
+          );
+        } else if (!invoice.subscription) {
+          await props.stripeEventsRepo.updateById(event.id, {
+            processingStatus: 'ignored',
+            processedAt: new Date(),
+          });
+          return Response.json({ received: true }, { status: 200 });
+        } else {
+          await handleInvoiceCreated(event, invoice);
         }
       } else {
         await props.stripeEventsRepo.updateById(event.id, {

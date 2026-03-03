@@ -112,6 +112,7 @@ Receives Stripe webhook events. Verifies the request signature, records the even
 | `customer.subscription.updated` | Updates `status`, `currentPeriodEnd`, and `cancelAtPeriodEnd`                                               |
 | `customer.subscription.deleted` | Updates `status` to `canceled`                                                                              |
 | `invoice.upcoming`              | Recalculates `yearsOut` and updates the Stripe subscription quantity if changed; writes to `billingSyncLog` |
+| `invoice.created`               | Syncs `billingSubscriptions.monthlyAmount` to match what was actually invoiced                              |
 | All others                      | Recorded in `stripeEvents` with `processingStatus: 'ignored'`                                               |
 
 **Idempotency:** Every event is checked against the `stripeEvents` table by `stripeEventId` before processing. If the event has already been `processed` or `ignored`, the handler returns 200 immediately without re-processing.

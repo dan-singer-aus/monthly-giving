@@ -699,4 +699,203 @@ describe('POST /api/webhooks/stripe', () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe('invoice.created', () => {
+    const testInvoiceWithLines = {
+      ...testInvoice,
+      lines: { data: [{ quantity: 16 }] },
+    };
+
+    it('updates monthlyAmount to match invoiced quantity', async () => {
+      let capturedUpdatePatch: unknown = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.created', testInvoiceWithLines),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'processed' as const,
+          }),
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async (_id, patch) => {
+            capturedUpdatePatch = patch;
+            return testBillingSubscription;
+          },
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(
+        (capturedUpdatePatch as { monthlyAmount: number }).monthlyAmount
+      ).toBe(16);
+    });
+
+    it('marks event as ignored when invoice.subscription is null', async () => {
+      let capturedUpdateStatus: string | null = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.created', {
+                customer: 'cus_test_456',
+                parent: {
+                  type: 'subscription_details',
+                  subscription_details: { subscription: null },
+                },
+                lines: { data: [{ quantity: 16 }] },
+              }),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async (_id, patch) => {
+            capturedUpdateStatus = patch.processingStatus ?? null;
+            return {
+              stripeEventId: 'evt_test',
+              processingStatus: patch.processingStatus ?? 'received',
+            };
+          },
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(capturedUpdateStatus).toBe('ignored');
+    });
+
+    it('marks event as processed when local subscription is not found', async () => {
+      let capturedUpdateStatus: string | null = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.created', testInvoiceWithLines),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async (_id, patch) => {
+            capturedUpdateStatus = patch.processingStatus ?? null;
+            return {
+              stripeEventId: 'evt_test',
+              processingStatus: patch.processingStatus ?? 'received',
+            };
+          },
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => null,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(capturedUpdateStatus).toBe('processed');
+    });
+
+    it('marks event as processed when invoice has no line items', async () => {
+      let capturedUpdateStatus: string | null = null;
+
+      const handler = makeStripeWebhookHandler({
+        stripe: {
+          webhooks: {
+            constructEvent: () =>
+              buildStripeEvent('invoice.created', {
+                ...testInvoice,
+                lines: { data: [] },
+              }),
+          },
+          subscriptions: {
+            retrieve: async () => testRetrievedSubscription,
+            update: async () => {},
+          },
+        },
+        stripeEventsRepo: {
+          getById: async () => null,
+          create: async () => ({
+            stripeEventId: 'evt_test',
+            processingStatus: 'received' as const,
+          }),
+          updateById: async (_id, patch) => {
+            capturedUpdateStatus = patch.processingStatus ?? null;
+            return {
+              stripeEventId: 'evt_test',
+              processingStatus: patch.processingStatus ?? 'received',
+            };
+          },
+        },
+        billingCustomersRepo: {
+          getByStripeCustomerId: async () => testBillingCustomer,
+        },
+        billingSubscriptionsRepo: {
+          create: async () => testBillingSubscription,
+          getByStripeSubscriptionId: async () => testBillingSubscription,
+          updateById: async () => testBillingSubscription,
+        },
+        usersRepo: { getById: async () => testUser },
+        billingSyncLogRepo: { create: async () => null },
+      });
+
+      const response = await handler(makeRequest('{}'));
+      expect(response.status).toBe(200);
+      expect(capturedUpdateStatus).toBe('processed');
+    });
+  });
 });

@@ -5,6 +5,7 @@ const SUBSCRIPTION_UPDATED_EVENT = 'customer.subscription.updated';
 const SUBSCRIPTION_DELETED_EVENT = 'customer.subscription.deleted';
 const INVOICE_UPCOMING_EVENT = 'invoice.upcoming';
 const INVOICE_CREATED_EVENT = 'invoice.created';
+const INVOICE_PAID_EVENT = 'invoice.paid';
 
 // ============================================================
 // Types
@@ -35,6 +36,13 @@ type StripeInvoice = {
   lines: {
     data: StripeInvoiceLine[];
   };
+};
+
+type StripePaidInvoice = {
+  id: string;
+  customer: string;
+  amount_paid: number;
+  paid_at: number | null;
 };
 
 type StripeSubscription = {
@@ -129,6 +137,8 @@ type BillingSyncLogRepo = {
   }) => Promise<unknown>;
 };
 
+
+
 type BillingSubscriptionsRepo = {
   create: (input: {
     id: string;
@@ -154,6 +164,17 @@ type BillingSubscriptionsRepo = {
   ) => Promise<{ id: string; stripeSubscriptionId: string } | null>;
 };
 
+type SubscriptionPaymentsRepo = {
+  create: (input: {
+    userId?: string;
+    stripeInvoiceId: string;
+    amountCents: number;
+    paidAt: Date;
+    graduationYear: number;
+  }) => Promise<unknown>;
+};
+
+
 type WebhookHandlerProps = {
   stripe: StripeClient;
   stripeEventsRepo: StripeEventsRepo;
@@ -161,6 +182,7 @@ type WebhookHandlerProps = {
   billingCustomersRepo: BillingCustomersRepo;
   usersRepo: UsersRepo;
   billingSyncLogRepo: BillingSyncLogRepo;
+  subscriptionPaymentsRepo: SubscriptionPaymentsRepo;
 };
 
 // ============================================================
@@ -203,6 +225,7 @@ function extractSubscriptionData(
 function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
   const { object } = event.data;
   if (typeof object !== 'object' || object === null) return null;
+
   const record = object as Record<string, unknown>;
 
   if (typeof record.customer !== 'string') return null;
@@ -235,6 +258,24 @@ function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
         : [],
     },
   };
+}
+
+function extractPaidInvoiceData(event: StripeEvent): StripePaidInvoice | null {
+  const { object } = event.data;
+  if (typeof object !== 'object' || object === null) return null;
+
+  const record = object as Record<string, unknown>;
+
+  if (
+    typeof record.id !== 'string' ||
+    typeof record.customer !== 'string' ||
+    typeof record.amount_paid !== 'number' ||
+    (record.paid_at !== null && typeof record.paid_at !== 'number')
+  ) {
+    return null;
+  }
+
+  return record as unknown as StripePaidInvoice;
 }
 
 // ============================================================
@@ -412,6 +453,43 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
     });
   }
 
+  async function handleInvoicePaid(
+    event: StripeEvent,
+    paidInvoice: StripePaidInvoice
+  ): Promise<void> {
+    const billingCustomer =
+      await props.billingCustomersRepo.getByStripeCustomerId(
+        paidInvoice.customer
+      );
+
+    if (!billingCustomer) {
+      console.warn(
+        `No billing customer mapping found for Stripe customer: ${paidInvoice.customer}. Invoice paid event ${event.id} processed with no action.`
+      );
+      return;
+    }
+
+    const user = await props.usersRepo.getById(billingCustomer.userId);
+    if (!user) {
+      console.warn(
+        `No user found for billing customer with user ID: ${billingCustomer.userId}. Invoice paid event ${event.id} processed with no action.`
+      );
+      return;
+    }
+
+    const paidAt = paidInvoice.paid_at !== null
+      ? new Date(paidInvoice.paid_at * 1000)
+      : new Date();
+    
+    await props.subscriptionPaymentsRepo.create({
+      userId: billingCustomer.userId,
+      stripeInvoiceId: paidInvoice.id,
+      amountCents: paidInvoice.amount_paid,
+      paidAt,
+      graduationYear: user.graduationYear,
+    });
+  }
+
   return async function POST(req: Request): Promise<Response> {
     const rawBody = await req.text();
     const signature = req.headers.get('stripe-signature');
@@ -456,13 +534,15 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
       }
 
       const subscription = extractSubscriptionData(event);
-      const invoice = extractInvoiceData(event);
+      const invoice = extractInvoiceData(event)
+      const paidInvoice = extractPaidInvoiceData(event);
+      
 
       await props.stripeEventsRepo.create({
         stripeEventId: event.id,
         eventType: event.type,
         processingStatus: 'received',
-        relatedCustomerId: subscription?.customer ?? invoice?.customer ?? null,
+        relatedCustomerId: subscription?.customer ?? invoice?.customer ?? paidInvoice?.customer ??null,
         relatedSubscriptionId:
           subscription?.id ?? invoice?.subscription ?? null,
         payload: event,
@@ -517,6 +597,14 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
           return Response.json({ received: true }, { status: 200 });
         } else {
           await handleInvoiceCreated(event, invoice);
+        }
+      } else if (event.type === INVOICE_PAID_EVENT) {
+        if (!paidInvoice) {
+          console.warn(
+            `${event.type} event ${event.id} has no valid paid invoice object`
+          );
+        } else {
+          await handleInvoicePaid(event, paidInvoice);
         }
       } else {
         await props.stripeEventsRepo.updateById(event.id, {

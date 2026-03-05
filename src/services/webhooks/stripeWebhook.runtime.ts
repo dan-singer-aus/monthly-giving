@@ -5,6 +5,7 @@ import { billingCustomersRepo } from '@/src/repos/billingCustomers.repo';
 import { makeStripeWebhookHandler } from './stripeWebhook.handler';
 import { usersRepo } from '@/src/repos/users.repo';
 import { billingSyncLogRepo } from '@/src/repos/billingSyncLog.repo';
+import { subscriptionPaymentsRepo } from '@/src/repos/subscriptionPayments.repo';
 
 export const stripeWebhookHandler = makeStripeWebhookHandler({
   stripe,
@@ -13,4 +14,5 @@ export const stripeWebhookHandler = makeStripeWebhookHandler({
   billingCustomersRepo,
   usersRepo,
   billingSyncLogRepo,
+  subscriptionPaymentsRepo,
 });

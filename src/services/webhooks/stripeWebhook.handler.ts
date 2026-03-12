@@ -4,6 +4,8 @@ const SUBSCRIPTION_CREATED_EVENT = 'customer.subscription.created';
 const SUBSCRIPTION_UPDATED_EVENT = 'customer.subscription.updated';
 const SUBSCRIPTION_DELETED_EVENT = 'customer.subscription.deleted';
 const INVOICE_UPCOMING_EVENT = 'invoice.upcoming';
+const INVOICE_CREATED_EVENT = 'invoice.created';
+const INVOICE_PAID_EVENT = 'invoice.paid';
 
 // ============================================================
 // Types
@@ -24,9 +26,23 @@ type StripeSubscriptionItem = {
   current_period_end: number;
 };
 
+type StripeInvoiceLine = {
+  quantity: number | null;
+};
+
 type StripeInvoice = {
   subscription: string | null;
   customer: string;
+  lines: {
+    data: StripeInvoiceLine[];
+  };
+};
+
+type StripePaidInvoice = {
+  id: string;
+  customer: string;
+  amount_paid: number;
+  paid_at: number | null;
 };
 
 type StripeSubscription = {
@@ -141,8 +157,19 @@ type BillingSubscriptionsRepo = {
       status?: SubscriptionStatus;
       currentPeriodEnd?: Date | null;
       cancelAtPeriodEnd?: boolean;
+      monthlyAmount?: number;
     }
   ) => Promise<{ id: string; stripeSubscriptionId: string } | null>;
+};
+
+type SubscriptionPaymentsRepo = {
+  create: (input: {
+    userId?: string;
+    stripeInvoiceId: string;
+    amountCents: number;
+    paidAt: Date;
+    graduationYear: number;
+  }) => Promise<unknown>;
 };
 
 type WebhookHandlerProps = {
@@ -152,7 +179,42 @@ type WebhookHandlerProps = {
   billingCustomersRepo: BillingCustomersRepo;
   usersRepo: UsersRepo;
   billingSyncLogRepo: BillingSyncLogRepo;
+  subscriptionPaymentsRepo: SubscriptionPaymentsRepo;
 };
+
+// ============================================================
+// Errors
+// ============================================================
+
+class SignatureError extends Error {}
+class ConfigurationError extends Error {}
+
+// ============================================================
+// Request parsing
+// ============================================================
+
+async function parseAndVerifyRequest(
+  req: Request,
+  stripe: StripeClient
+): Promise<StripeEvent> {
+  const rawBody = await req.text();
+  const signature = req.headers.get('stripe-signature');
+
+  if (!signature) {
+    throw new SignatureError('Missing stripe-signature header');
+  }
+
+  const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!stripeWebhookSecret) {
+    throw new ConfigurationError('STRIPE_WEBHOOK_SECRET is not configured');
+  }
+
+  return stripe.webhooks.constructEvent(
+    rawBody,
+    signature,
+    stripeWebhookSecret
+  );
+}
 
 // ============================================================
 // Event data extractors
@@ -194,6 +256,7 @@ function extractSubscriptionData(
 function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
   const { object } = event.data;
   if (typeof object !== 'object' || object === null) return null;
+
   const record = object as Record<string, unknown>;
 
   if (typeof record.customer !== 'string') return null;
@@ -218,7 +281,32 @@ function extractInvoiceData(event: StripeEvent): StripeInvoice | null {
   return {
     subscription: subscriptionId,
     customer: record.customer,
+    lines: {
+      data: Array.isArray(
+        (record.lines as { data?: unknown } | undefined)?.data
+      )
+        ? (record.lines as { data: Array<StripeInvoiceLine> }).data
+        : [],
+    },
   };
+}
+
+function extractPaidInvoiceData(event: StripeEvent): StripePaidInvoice | null {
+  const { object } = event.data;
+  if (typeof object !== 'object' || object === null) return null;
+
+  const record = object as Record<string, unknown>;
+
+  if (
+    typeof record.id !== 'string' ||
+    typeof record.customer !== 'string' ||
+    typeof record.amount_paid !== 'number' ||
+    (record.paid_at !== null && typeof record.paid_at !== 'number')
+  ) {
+    return null;
+  }
+
+  return record as unknown as StripePaidInvoice;
 }
 
 // ============================================================
@@ -316,11 +404,12 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
       return;
     }
 
+    const yearsOut = computeYearsOut(
+      user.graduationYear,
+      new Date().getFullYear()
+    );
+
     if (localSub.status !== 'active') {
-      const yearsOut = computeYearsOut(
-        user.graduationYear,
-        new Date().getFullYear()
-      );
       await props.billingSyncLogRepo.create({
         userId: user.id,
         stripeSubscriptionId: invoice.subscription,
@@ -331,11 +420,6 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
       });
       return;
     }
-
-    const yearsOut = computeYearsOut(
-      user.graduationYear,
-      new Date().getFullYear()
-    );
     const stripeSubscription = await props.stripe.subscriptions.retrieve(
       invoice.subscription
     );
@@ -370,31 +454,145 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
     });
   }
 
-  return async function POST(req: Request): Promise<Response> {
-    const rawBody = await req.text();
-    const signature = req.headers.get('stripe-signature');
+  async function handleInvoiceCreated(
+    event: StripeEvent,
+    invoice: StripeInvoice
+  ): Promise<void> {
+    if (!invoice.subscription) {
+      return;
+    }
 
-    if (!signature) {
-      return Response.json(
-        { error: 'Missing stripe-signature header' },
-        { status: 400 }
+    const localSub =
+      await props.billingSubscriptionsRepo.getByStripeSubscriptionId(
+        invoice.subscription
       );
+
+    if (!localSub) {
+      return;
     }
 
-    const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!stripeWebhookSecret) {
-      console.error('STRIPE_WEBHOOK_SECRET is not configured');
-      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    const firstLine = invoice.lines.data[0];
+    if (!firstLine || firstLine.quantity === null) {
+      return;
+    }
+    await props.billingSubscriptionsRepo.updateById(localSub.id, {
+      monthlyAmount: firstLine.quantity,
+    });
+  }
+
+  async function handleInvoicePaid(
+    event: StripeEvent,
+    paidInvoice: StripePaidInvoice
+  ): Promise<void> {
+    const billingCustomer =
+      await props.billingCustomersRepo.getByStripeCustomerId(
+        paidInvoice.customer
+      );
+
+    if (!billingCustomer) {
+      console.warn(
+        `No billing customer mapping found for Stripe customer: ${paidInvoice.customer}. Invoice paid event ${event.id} processed with no action.`
+      );
+      return;
     }
 
+    const user = await props.usersRepo.getById(billingCustomer.userId);
+    if (!user) {
+      console.warn(
+        `No user found for billing customer with user ID: ${billingCustomer.userId}. Invoice paid event ${event.id} processed with no action.`
+      );
+      return;
+    }
+
+    const paidAt =
+      paidInvoice.paid_at !== null
+        ? new Date(paidInvoice.paid_at * 1000)
+        : new Date();
+
+    await props.subscriptionPaymentsRepo.create({
+      userId: billingCustomer.userId,
+      stripeInvoiceId: paidInvoice.id,
+      amountCents: paidInvoice.amount_paid,
+      paidAt,
+      graduationYear: user.graduationYear,
+    });
+  }
+
+  async function dispatchEventHandler(
+    event: StripeEvent,
+    subscription: StripeSubscription | null,
+    invoice: StripeInvoice | null,
+    paidInvoice: StripePaidInvoice | null
+  ): Promise<'processed' | 'ignored'> {
+    if (event.type === SUBSCRIPTION_CREATED_EVENT) {
+      if (subscription) {
+        await handleSubscriptionCreated(event, subscription);
+      } else {
+        console.warn(
+          `${event.type} event ${event.id} has no valid subscription object`
+        );
+      }
+    } else if (
+      event.type === SUBSCRIPTION_UPDATED_EVENT ||
+      event.type === SUBSCRIPTION_DELETED_EVENT
+    ) {
+      if (subscription) {
+        await handleSubscriptionUpdatedOrDeleted(event, subscription);
+      } else {
+        console.warn(
+          `${event.type} event ${event.id} has no valid subscription object`
+        );
+      }
+    } else if (event.type === INVOICE_UPCOMING_EVENT) {
+      if (!invoice) {
+        console.warn(
+          `${event.type} event ${event.id} has no valid invoice object`
+        );
+      } else if (!invoice.subscription) {
+        return 'ignored';
+      } else {
+        await handleInvoiceUpcoming(
+          event,
+          invoice as { subscription: string; customer: string }
+        );
+      }
+    } else if (event.type === INVOICE_CREATED_EVENT) {
+      if (!invoice) {
+        console.warn(
+          `${event.type} event ${event.id} has no valid invoice object`
+        );
+      } else if (!invoice.subscription) {
+        return 'ignored';
+      } else {
+        await handleInvoiceCreated(event, invoice);
+      }
+    } else if (event.type === INVOICE_PAID_EVENT) {
+      if (!paidInvoice) {
+        console.warn(
+          `${event.type} event ${event.id} has no valid paid invoice object`
+        );
+      } else {
+        await handleInvoicePaid(event, paidInvoice);
+      }
+    } else {
+      return 'ignored';
+    }
+
+    return 'processed';
+  }
+
+  return async function POST(req: Request): Promise<Response> {
     let event: StripeEvent;
     try {
-      event = props.stripe.webhooks.constructEvent(
-        rawBody,
-        signature,
-        stripeWebhookSecret
-      );
+      event = await parseAndVerifyRequest(req, props.stripe);
     } catch (error) {
+      if (error instanceof ConfigurationError) {
+        console.error((error as Error).message);
+        return Response.json(
+          { error: 'Internal server error' },
+          { status: 500 }
+        );
+      }
       console.error('Stripe signature verification failed:', error);
       return Response.json(
         { error: 'Invalid webhook signature' },
@@ -415,63 +613,31 @@ export function makeStripeWebhookHandler(props: WebhookHandlerProps) {
 
       const subscription = extractSubscriptionData(event);
       const invoice = extractInvoiceData(event);
+      const paidInvoice = extractPaidInvoiceData(event);
 
       await props.stripeEventsRepo.create({
         stripeEventId: event.id,
         eventType: event.type,
         processingStatus: 'received',
-        relatedCustomerId: subscription?.customer ?? invoice?.customer ?? null,
+        relatedCustomerId:
+          subscription?.customer ??
+          invoice?.customer ??
+          paidInvoice?.customer ??
+          null,
         relatedSubscriptionId:
           subscription?.id ?? invoice?.subscription ?? null,
         payload: event,
       });
 
-      if (event.type === SUBSCRIPTION_CREATED_EVENT) {
-        if (subscription) {
-          await handleSubscriptionCreated(event, subscription);
-        } else {
-          console.warn(
-            `${event.type} event ${event.id} has no valid subscription object`
-          );
-        }
-      } else if (
-        event.type === SUBSCRIPTION_UPDATED_EVENT ||
-        event.type === SUBSCRIPTION_DELETED_EVENT
-      ) {
-        if (subscription) {
-          await handleSubscriptionUpdatedOrDeleted(event, subscription);
-        } else {
-          console.warn(
-            `${event.type} event ${event.id} has no valid subscription object`
-          );
-        }
-      } else if (event.type === INVOICE_UPCOMING_EVENT) {
-        if (!invoice) {
-          console.warn(
-            `${event.type} event ${event.id} has no valid invoice object`
-          );
-        } else if (!invoice.subscription) {
-          await props.stripeEventsRepo.updateById(event.id, {
-            processingStatus: 'ignored',
-            processedAt: new Date(),
-          });
-          return Response.json({ received: true }, { status: 200 });
-        } else {
-          await handleInvoiceUpcoming(
-            event,
-            invoice as { subscription: string; customer: string }
-          );
-        }
-      } else {
-        await props.stripeEventsRepo.updateById(event.id, {
-          processingStatus: 'ignored',
-          processedAt: new Date(),
-        });
-        return Response.json({ received: true }, { status: 200 });
-      }
+      const outcome = await dispatchEventHandler(
+        event,
+        subscription,
+        invoice,
+        paidInvoice
+      );
 
       await props.stripeEventsRepo.updateById(event.id, {
-        processingStatus: 'processed',
+        processingStatus: outcome,
         processedAt: new Date(),
       });
 

@@ -27,7 +27,7 @@ If a `devNotes/` folder exists locally, it contains developer-facing documentati
 | Frontend   | Next.js (App Router), shadcn/ui, Tailwind CSS |
 | Backend    | Next.js Route Handlers (REST-style)           |
 | Database   | PostgreSQL 16 via Docker, Drizzle ORM         |
-| Auth       | Supabase Auth — Email OTP (not magic links)   |
+| Auth       | Supabase Auth — Email/password                |
 | Billing    | Stripe Checkout + Customer Portal + Webhooks  |
 | Validation | zod                                           |
 | Testing    | vitest                                        |
@@ -287,6 +287,7 @@ Never edit `CLAUDE.md` autonomously. Always show the proposed change and get exp
 
 - **Verbose naming** — prefer `error` over `e`, `subscription` over `sub`, `user` over `u`. Exception: established conventions like `i` in loops.
 - **Clarity over cleverness** — write code that is easy to read and reason about, not code that is impressively terse.
+- **Single level of abstraction** — each function should operate at one level of abstraction. A function that orchestrates a flow should call other named functions, not inline low-level details alongside them. If a step needs a comment to explain what it does, it likely belongs in its own named function. Extracting to a named function in the same file is always preferred for clarity. Only extract to a shared utility when the logic is genuinely reused.
 - **Avoid duplication** — extract shared logic rather than copying it. Three similar lines may be fine; a fourth means it needs a name.
 - **No `any`** — TypeScript strict mode is enabled. Use `unknown` and narrow it if the shape is dynamic. Never use `any` as an escape hatch.
 - **No magic values** — extract repeated string literals and numbers to named constants.

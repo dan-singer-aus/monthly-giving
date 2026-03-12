@@ -194,3 +194,17 @@ export const alumniInvites = pgTable(
     index('idx_alumni_invites_used').on(table.usedAt),
   ]
 );
+
+export const subscriptionPayments = pgTable('subscription_payments', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  graduationYear: integer('graduation_year').notNull(),
+  stripeInvoiceId: text('stripe_invoice_id').notNull().unique(),
+  amountCents: integer('amount_cents').notNull(),
+  paidAt: timestamp('paid_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});

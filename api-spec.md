@@ -6,7 +6,56 @@ This document covers all implemented API endpoints. It is the authoritative refe
 
 ---
 
+## Table of Contents
+
+- [POST /api/auth/register](#post-apiauthregister)
+- [GET /api/health](#get-apihealth)
+- [GET /api/me](#get-apime)
+- [PATCH /api/me](#patch-apime)
+- [POST /api/billing/checkout-session](#post-apibillingcheckout-session)
+- [POST /api/billing/portal-session](#post-apibillingportal-session)
+- [POST /api/webhooks/stripe](#post-apiwebhooksstripe)
+- [GET /api/subscription](#get-apisubscription)
+- [GET /api/receipts](#get-apireceipts)
+- [GET /api/public/metrics](#get-apipublicmetrics)
+- [GET /api/public/class-totals](#get-apipublicclass-totals)
+- [GET /api/admin/metrics](#get-apiadminmetrics)
+- [GET /api/admin/export](#get-apiadminexport)
+
+---
+
 ## Endpoints
+
+### `POST /api/auth/register`
+
+Creates a new user account. Registers the user in Supabase Auth and creates a corresponding record in the `users` table.
+
+**Auth:** None
+
+**Request body:**
+
+```json
+{
+  "email": "string (valid email)",
+  "password": "string (min 8 characters)",
+  "firstName": "string (min 1 character)",
+  "lastName": "string (min 1 character)",
+  "graduationYear": "integer (1900–2100)"
+}
+```
+
+**Responses:**
+
+| Status | Body                                            | When                     |
+| ------ | ----------------------------------------------- | ------------------------ |
+| 201    | `{ "message": "User registered successfully" }` | Account created          |
+| 400    | `{ "error": "...", "details": { ... } }`        | Invalid request body     |
+| 409    | `{ "error": "Email already in use" }`           | Email already registered |
+| 500    | `{ "error": "..." }`                            | Supabase or DB error     |
+
+> No session is returned on registration. The client should sign in separately after registering.
+
+---
 
 ### `GET /api/health`
 
@@ -112,6 +161,8 @@ Receives Stripe webhook events. Verifies the request signature, records the even
 | `customer.subscription.updated` | Updates `status`, `currentPeriodEnd`, and `cancelAtPeriodEnd`                                               |
 | `customer.subscription.deleted` | Updates `status` to `canceled`                                                                              |
 | `invoice.upcoming`              | Recalculates `yearsOut` and updates the Stripe subscription quantity if changed; writes to `billingSyncLog` |
+| `invoice.created`               | Syncs `billingSubscriptions.monthlyAmount` to match what was actually invoiced                              |
+| `invoice.paid`                  | Records a payment in `subscriptionPayments` (used to power the `/api/public/class-totals` endpoint)         |
 | All others                      | Recorded in `stripeEvents` with `processingStatus: 'ignored'`                                               |
 
 **Idempotency:** Every event is checked against the `stripeEvents` table by `stripeEventId` before processing. If the event has already been `processed` or `ignored`, the handler returns 200 immediately without re-processing.
@@ -277,6 +328,33 @@ Returns public giving statistics. No authentication required.
 ```
 
 > `totalMonthlyRevenue` is in dollars (sum of each active subscriber's `monthlyAmount`).
+
+---
+
+### `GET /api/public/class-totals`
+
+Returns total giving grouped by graduation year. No authentication required.
+
+**Auth:** None
+
+**Request:** No body or parameters.
+
+**Responses:**
+
+| Status | Body      | When   |
+| ------ | --------- | ------ |
+| 200    | `[ ... ]` | Always |
+
+**Response shape:**
+
+```json
+[
+  { "graduationYear": 2000, "totalAmountDollars": 26, "contributorCount": 2 },
+  { "graduationYear": 2010, "totalAmountDollars": 15, "contributorCount": 1 }
+]
+```
+
+> Results are ordered by `graduationYear` ascending. `totalAmountDollars` is a number in dollars. `contributorCount` reflects distinct users — a user who paid multiple times in the same year is counted once.
 
 ---
 

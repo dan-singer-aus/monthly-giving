@@ -121,6 +121,8 @@ This destroys and recreates the test container and re-applies all migrations. Th
 | ------------------------------------ | -------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                       | PostgreSQL connection string for the dev database                                            |
 | `DATABASE_URL_TEST`                  | PostgreSQL connection string for the test database                                           |
+| `NEXT_PUBLIC_SUPABASE_URL`           | Supabase project URL (found in project Settings → API)                                       |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`      | Supabase anon/public key (found in project Settings → API)                                   |
 | `STRIPE_SECRET_KEY`                  | Stripe secret key (server-side only)                                                         |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (exposed to the browser)                                              |
 | `STRIPE_PRICE_ID`                    | Stripe price ID for the $1/month recurring subscription                                      |

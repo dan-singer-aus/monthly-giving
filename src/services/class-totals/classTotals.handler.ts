@@ -13,10 +13,20 @@ type ClassTotalsHandlerProps = {
 };
 
 export function makeClassTotalsHandler(props: ClassTotalsHandlerProps) {
-  return async function GET() {
+  return async function GET(_req: Request) {
     const totalsByGraduationYear =
       await props.subscriptionPaymentsRepo.getTotalPaymentsByGraduationYear();
 
-    return Response.json(totalsByGraduationYear, { status: 200 });
+    const totalsByGraduationYearWithDollars = totalsByGraduationYear.map(
+      ({ graduationYear, totalAmountCents, contributorCount }) => ({
+        graduationYear,
+        totalAmountDollars: totalAmountCents
+          ? parseInt(totalAmountCents) / 100
+          : 0,
+        contributorCount,
+      })
+    );
+
+    return Response.json(totalsByGraduationYearWithDollars, { status: 200 });
   };
 }

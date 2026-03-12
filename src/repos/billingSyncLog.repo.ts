@@ -53,4 +53,4 @@ export class BillingSyncLogRepo {
   }
 }
 
-export const billingSyncLogRepo = new BillingSyncLogRepo(db); 
+export const billingSyncLogRepo = new BillingSyncLogRepo(db);

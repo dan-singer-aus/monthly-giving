@@ -57,6 +57,23 @@ export function makeCheckoutSessionHandler(props: {
   billingCustomersRepo: BillingCustomersRepo;
   stripe: StripeClient;
 }) {
+  async function getOrCreateBillingCustomer(
+    user: User
+  ): Promise<BillingCustomer | null> {
+    const existing = await props.billingCustomersRepo.getByUserId(user.id);
+    if (existing) return existing;
+
+    const stripeCustomer = await props.stripe.customers.create({
+      email: user.email,
+      name: `${user.firstName} ${user.lastName}`,
+    });
+
+    return props.billingCustomersRepo.create({
+      userId: user.id,
+      stripeCustomerId: stripeCustomer.id,
+    });
+  }
+
   return async function POST(req: Request) {
     const authResult = await requireUser(req, props.auth);
     if (!authResult.success) return authResult.response;
@@ -71,26 +88,10 @@ export function makeCheckoutSessionHandler(props: {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Get or create the Stripe customer for this user.
-    let billingCustomer = await props.billingCustomersRepo.getByUserId(userId);
+    const billingCustomer = await getOrCreateBillingCustomer(user);
     if (!billingCustomer) {
-      const stripeCustomer = await props.stripe.customers.create({
-        email: user.email,
-        name: `${user.firstName} ${user.lastName}`,
-      });
-
-      billingCustomer = await props.billingCustomersRepo.create({
-        userId: user.id,
-        stripeCustomerId: stripeCustomer.id,
-      });
-
-      if (!billingCustomer) {
-        console.error('Failed to persist billing customer for userId:', userId);
-        return Response.json(
-          { error: 'Internal server error' },
-          { status: 500 }
-        );
-      }
+      console.error('Failed to persist billing customer for userId:', userId);
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
     }
 
     if (!STRIPE_PRICE_ID) {

@@ -169,6 +169,18 @@ Drizzle ORM automatically maps camelCase TypeScript column names to snake_case S
 | usedAt         | timestamptz | nullable                  |
 | createdAt      | timestamptz | default now()             |
 
+#### `subscriptionPayments`
+
+| Column          | Type        | Notes                  |
+| --------------- | ----------- | ---------------------- |
+| id              | uuid        | PK, gen_random_uuid()  |
+| userId          | uuid        | FK → users.id SET NULL |
+| graduationYear  | integer     | not null               |
+| stripeInvoiceId | text        | unique, not null       |
+| amountCents     | integer     | not null               |
+| paidAt          | timestamptz | not null               |
+| createdAt       | timestamptz | default now()          |
+
 ---
 
 ## API Endpoints (Spec)
@@ -177,6 +189,8 @@ Drizzle ORM automatically maps camelCase TypeScript column names to snake_case S
 | ------ | ----------------------------- | ---------- | ------------------------------------- |
 | GET    | /api/health                   | none       | Health check                          |
 | GET    | /api/public/metrics           | none       | Public giving stats                   |
+| GET    | /api/public/class-totals      | none       | Aggregate payments by graduation year |
+| POST   | /api/auth/register            | none       | Create Supabase account + users row   |
 | GET    | /api/me                       | user       | Get own profile                       |
 | PATCH  | /api/me                       | user       | Update profile                        |
 | POST   | /api/billing/checkout-session | user       | Create Stripe Checkout session        |
@@ -197,7 +211,7 @@ Drizzle ORM automatically maps camelCase TypeScript column names to snake_case S
 4. API calculates new quantity (years_out), updates Stripe subscription (no proration)
 5. Stripe generates invoice and charges the correct amount
 
-Webhook events handled: `invoice.upcoming`
+Webhook events handled: `invoice.upcoming`, `invoice.created`
 
 Webhook handling is idempotent — check `stripeEvents` before processing.
 

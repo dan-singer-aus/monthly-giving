@@ -57,7 +57,7 @@ describe('register handler', () => {
     expect(json).toEqual({ message: 'User registered successfully' });
   });
 
-  it('returns 422 for invalid input', async () => {
+  it('returns 400 for invalid input', async () => {
     const handler = makeHandler();
     const req = makeRequest({ ...validBody, email: 'invalid-email' });
     const res = await handler(req);

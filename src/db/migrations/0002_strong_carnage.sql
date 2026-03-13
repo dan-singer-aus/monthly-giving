@@ -1,0 +1,1 @@
+DROP TABLE "alumni_invites" CASCADE;

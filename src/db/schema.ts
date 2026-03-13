@@ -170,31 +170,6 @@ export const billingSyncLog = pgTable(
   ]
 );
 
-export const alumniInvites = pgTable(
-  'alumni_invites',
-  {
-    id: uuid('id')
-      .primaryKey()
-      .default(sql`gen_random_uuid()`),
-    email: text('email').notNull().unique(),
-    graduationYear: integer('graduation_year').notNull(),
-    inviteCode: text('invite_code').notNull().unique(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
-    usedAt: timestamp('used_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .default(sql`now()`),
-  },
-  (table) => [
-    check(
-      'alumni_invites_graduation_year_range',
-      sql`${table.graduationYear} BETWEEN 1900 AND 2100`
-    ),
-    index('idx_alumni_invites_expires').on(table.expiresAt),
-    index('idx_alumni_invites_used').on(table.usedAt),
-  ]
-);
-
 export const subscriptionPayments = pgTable('subscription_payments', {
   id: uuid('id')
     .primaryKey()

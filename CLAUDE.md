@@ -157,18 +157,6 @@ Drizzle ORM automatically maps camelCase TypeScript column names to snake_case S
 | actionTaken          | sync_action | not null                                 |
 | createdAt            | timestamptz | default now()                            |
 
-#### `alumniInvites`
-
-| Column         | Type        | Notes                     |
-| -------------- | ----------- | ------------------------- |
-| id             | uuid        | PK, gen_random_uuid()     |
-| email          | text        | unique, not null          |
-| graduationYear | integer     | not null, CHECK 1900–2100 |
-| inviteCode     | text        | unique, not null          |
-| expiresAt      | timestamptz | nullable                  |
-| usedAt         | timestamptz | nullable                  |
-| createdAt      | timestamptz | default now()             |
-
 #### `subscriptionPayments`
 
 | Column          | Type        | Notes                  |

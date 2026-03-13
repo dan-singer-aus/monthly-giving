@@ -46,6 +46,8 @@ npm run drizzle:migrate:test    # test DB
 npm run dev
 ```
 
+> **Warning:** After `npm install`, you may see a moderate severity audit report for `esbuild` (a transitive dependency of `drizzle-kit`). Do **not** run `npm audit fix --force` — it will downgrade `drizzle-kit` to a breaking version (`0.18.1`) and break the migration system. The vulnerability only affects the esbuild development server and has no impact in production.
+
 Open [http://localhost:3000](http://localhost:3000). Adminer (DB browser) is at [http://localhost:8080](http://localhost:8080).
 
 Edit `.env.local` if you need to point at an external database or add API keys (see [Environment Variables](#environment-variables)).

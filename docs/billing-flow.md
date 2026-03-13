@@ -70,6 +70,7 @@ User          Frontend              API                        Stripe
 ```
 
 **What the API does:**
+
 1. Authenticates the user (Bearer token → Supabase JWT)
 2. Looks up graduation year from `users`
 3. Looks up or creates a Stripe customer in `billingCustomers`
@@ -101,6 +102,7 @@ Stripe                    API                              DB
 ```
 
 **What the webhook does:**
+
 1. Checks `stripeEvents` — skips if already processed (idempotency)
 2. Resolves user ID from the Stripe customer ID via `billingCustomers`
 3. Creates a row in `billingSubscriptions` with status, `monthlyAmount`, and `currentPeriodEnd`
@@ -142,13 +144,13 @@ Stripe                    API                              Stripe           DB
 
 **`actionTaken` values logged to `billingSyncLog`:**
 
-| Value | Meaning |
-|---|---|
-| `updated_quantity` | Quantity changed; Stripe subscription updated |
-| `no_change` | Quantity unchanged; nothing to do |
-| `skipped_not_active` | Subscription is not active; skipped |
-| `missing_mapping` | No user found for this Stripe customer |
-| `error` | Unexpected failure during processing |
+| Value                | Meaning                                       |
+| -------------------- | --------------------------------------------- |
+| `updated_quantity`   | Quantity changed; Stripe subscription updated |
+| `no_change`          | Quantity unchanged; nothing to do             |
+| `skipped_not_active` | Subscription is not active; skipped           |
+| `missing_mapping`    | No user found for this Stripe customer        |
+| `error`              | Unexpected failure during processing          |
 
 **Relevant code:** `src/services/webhooks/stripeWebhook.handler.ts`, `src/repos/billingSyncLog.repo.ts`
 
